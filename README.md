@@ -1,10 +1,20 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.3**, the generic sparse-matrix and actor-weight candidate.
-Published 0.3.0 remains on `main` and on its release page. This candidate adds
+This development branch builds **0.4.0-dev.4**, the generic sparse-matrix and actor-weight candidate.
+The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it does not introduce new body, head, colour or physics deformations.
+Dev.4 follows the game adapter's sex/source-capture fixes at CLAW `57bc951`;
+the portable evaluator and profile XML bytes are unchanged from dev.3.
+
+**Publication status, owner report on 31 October 2026:** the Nexus page
+[197517](https://www.nexusmods.com/skyrimspecialedition/mods/197517) was published
+and is now hidden by its owner while package freshness is reviewed. The owner
+also reports the required Morphbench Launcher download in Nexus quarantine, so
+a fresh installation using Nexus alone is not established. Local build and
+preview checks do not verify public file freshness, download availability or the
+cause of quarantine. See [publication status](src/main/resources/nexus/README.md).
 
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
 preview panels. One full human morph vector controls the human preview and the
@@ -12,18 +22,30 @@ editable many-to-many CLAW conversion. Wolf coefficients are derived and read-on
 there is no inverse conversion. Rotating either panel follows the other through
 the host's native orientation link. Zoom, pan and framing remain independent.
 
-This plugin requires [Morphbench Application 0.8.5 and Launcher v1](https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.5).
-The exact qualified Application ZIP has SHA256
+The retained local qualification baseline is
+[Morphbench Application 0.8.5 and Launcher v1](https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.5).
+The exact checked Application ZIP has SHA256
 `c24ab0f44431b4bff0d3ed5f708ede4a30523f724bed96c5d42e894383b10f19`.
 See its pinned [API contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.5/docs/addons.md)
 and [WASM contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.5/docs/addon-wasm.md).
-Independent previews and packaged WebAssembly are required; scoped geometry and
+The plugin requires the documented independent-preview and packaged WebAssembly
+capabilities; a version number alone is insufficient. Scoped geometry and
 parent-window downloads are optional capabilities. Stable Application 0.8.0 is
 insufficient. There is no separate JavaScript formula fallback: every calculated
 coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
+The current Morphbench source describes Application0.8.6 and Launcher v2; that
+combination is separate from the retained0.8.5 local plugin qualification and
+must not be presented as checked by these older observations.
+The dev.4 package additionally passed 22 protocol/UI-harness checks using the
+actual released 0.8.6 SDK and scripts extracted from its ZIP. A separate actual
+0.8.6 browser run, using Launcher v2's Python and vendor libraries in isolated
+settings, opened and applied Vanilla female and HIMBO male pairs. Both exported
+vectors match the native CLI bit-for-bit; a browser-exported pair of Vanilla
+matrices passes native parsing. This does not certify Launcher installation,
+its native window, Nexus availability or game behavior.
 
-Recorded published 0.3 browser checks on 31 October opened male/female pairs, applied real
+Recorded local 0.3 browser checks on 31 October opened male/female pairs, applied real
 thin/muscular vectors, rotated both directions, downloaded an 18,837-byte matrix,
 and read/exported every current/rest/delta position (14,597 human and 99,909 wolf
 vertices in the male check). These are untextured fixed-NIF observations, not
@@ -67,7 +89,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.3`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.4`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.

@@ -21,8 +21,8 @@ This is an authoring plugin for Morphbench. It works outside the game. Applying 
 [size=5][color=#D0B17A][b]Requirements[/b][/color][/size]
 
 [list]
-[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/194795]Morphbench Application[/url] 0.8.5 or later, with its required Morphbench Launcher v1. [url=https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.5]Matching Application and Launcher downloads on GitHub[/url] are available if a Nexus file is unavailable.
-[*]Your own human body NIF and TRI resources: [url=https://www.nexusmods.com/skyrimspecialedition/mods/46311]HIMBO[/url] 5.8 for male comparisons, or [url=https://www.nexusmods.com/skyrimspecialedition/mods/198]CBBE[/url] 2.0.3 / [url=https://www.nexusmods.com/skyrimspecialedition/mods/30174]CBBE 3BA[/url] 2.48 for female comparisons. Choose the family you intend to compare; 3BA is an optional CBBE extension.
+[*][url=https://www.nexusmods.com/skyrimspecialedition/mods/194795]Morphbench Application[/url] with its matching Launcher, independent previews and packaged WebAssembly support. The current plugin has been checked with Application 0.8.6 and the matching Launcher v2 libraries.
+[*]Your own human body resources: [url=https://www.nexusmods.com/skyrimspecialedition/mods/46311]HIMBO[/url] 5.8 for males, [url=https://www.nexusmods.com/skyrimspecialedition/mods/198]CBBE[/url] 2.0.3 / [url=https://www.nexusmods.com/skyrimspecialedition/mods/30174]CBBE 3BA[/url] 2.48 for females, or the game's original Vanilla body NIFs for either sex. Morphed families need their matching TRI; Vanilla comparisons use a separate actor-weight input and need no human TRI. Choose the family you intend to compare; 3BA is an optional CBBE extension.
 [*][url=https://github.com/Vhodnoylogin/claw/releases/tag/claw/0.7.0.0]CLAW 0.7.0.0 werewolf resources[/url]. Use the NIF/TRI files from the working archive; the separate test_CLAW archive is unnecessary. The older 0.6.2.0 bodies lack the Lean morphs used by this plugin's default matrices.
 [/list]
 
@@ -44,6 +44,8 @@ When updating an existing installation, disable the plugin, use the manager's up
 
 The supplied conversion covers body proportions. Human-to-wolf head, ear, tail and claw relationships, fur colour and physics are separate development work.
 
+The current development candidate also supports weight-only Vanilla male and female comparisons. Actor weight is separate from the human's morph sliders; it does not automatically blend the selected body's neutral geometry.
+
 The previews show the selected body files in their rest geometry. They help compare shape and measurements; textured appearance, animation and in-game behaviour still need their own checks. For an endpoint comparison, select the corresponding _0 or _1 models in both panels.
 
 [size=5][color=#D0B17A][b]Technical guide for modders[/b][/color][/size]
@@ -54,7 +56,9 @@ The mathematical evaluator is the same portable C++ source compiled into the CLA
 
 Supported functions are linear, positive, negative, smoothstep, integer power and constant. The editor reports each contribution, the final target value and differences from the original matrix or an imported coefficient snapshot. Wolf output values remain read-only; edit the human inputs or the conversion rules to change them.
 
-Preset JSON preserves family, sex, calibration, ordered rules, coefficients, caps and function parameters. Exported mapping XML preserves the complete native family catalogue and explicit defaults. Exporting a file does not install or apply that file to a running game. Existing saved actors retain their saved matrices until explicitly rebound through CLAW's runtime API.
+Preset JSON preserves family, sex, calibration, ordered rules, coefficients, caps and function parameters. Exported game XML selects exactly one male family (HIMBO or Vanilla) and one female family (CBBE, 3BA or Vanilla), with explicit defaults. Unselected families are omitted. Exporting a file does not install or apply that file to a running game. Existing saved actors retain their saved matrices until explicitly rebound through CLAW's runtime API.
+
+The reserved source $actor.weight is normalized to 0..1 and supplied separately from the human TRI vector. All five current canonical matrices reference it; constant or empty authored matrices need not. Human morph values are never multiplied by actor weight again.
 
 Vertex inspection reads each preview's complete current and initial positions, calculates current-minus-initial displacement and exports the result as JSON. These are sequential, model-space reads from fixed NIF resources, not measurements of animated game skinning. The plugin rejects a retained snapshot if the input morph vectors change during collection.
 
@@ -63,7 +67,8 @@ BodySlide small/big coefficients can be interpolated for a chosen weight, but th
 Large geometry exports may exceed the host's default download limit. Configure Morphbench's prepared-export limit when needed; the host supports up to 32 MiB. The pageable text viewer retains the complete export rather than only its displayed page.
 
 [url=https://github.com/Vhodnoylogin/claw-morphbench-plugin]Plugin source and detailed instructions[/url]
-[url=https://github.com/Vhodnoylogin/claw/blob/53e8f3872533f193483a4ee683d3bece1fe3eafa/docs/matrix-contract.md]Matrix format and arithmetic contract for this release[/url]
+[url=https://github.com/Vhodnoylogin/claw-morphbench-plugin/blob/e41582707efe10e09a25c9ee350cd27ea09c8dfe/src/main/morphbench-plugin/docs/sparse-matrices.md]Matrix format and arithmetic contract for the current development candidate[/url]
+[url=https://github.com/Vhodnoylogin/claw/blob/57bc951b775d33bea67b93270198cc39630acdf2/src/main/cpp/README.md]Pinned game integration source for the current development candidate[/url]
 [/spoiler]
 
 [size=5][color=#D0B17A][b]Credits & source[/b][/color][/size]
