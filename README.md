@@ -46,7 +46,7 @@ manifest filename `addon.json` and its keys keep Morphbench's public names.
 
 This is the independent [CLAW Morphbench plugin repository](https://github.com/Vhodnoylogin/claw-morphbench-plugin).
 It contains this browser plugin, its tests and publication artwork. CLAW's game
-DLL, body authoring and runtime belong to [CLAW - The Beast Within](https://github.com/Vhodnoylogin/claw).
+DLL, body authoring and runtime belong to [CLAW - Configurable Lycanthrope Anatomy and Weight](https://github.com/Vhodnoylogin/claw).
 
 `dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml to
 one committed CLAW feature revision, with per-file SHA256.
