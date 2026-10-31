@@ -2,8 +2,8 @@
 // Contract checks using audited real-resource names and retained fixture data.
 // No NIF renderer, game, actual SDK host or runtime capture is executed here.
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path");
-const { test } = require("node:test"), core = require("../src/core.js"), input = require("../src/input.js");
-const { PreviewController } = require("../src/preview-controller.js");
+const { test } = require("node:test"), core = require("../../main/morphbench-plugin/web/core.js"), input = require("../../main/morphbench-plugin/web/input.js");
+const { PreviewController } = require("../../main/morphbench-plugin/web/preview-controller.js");
 if (!process.argv[2] || !process.argv[3]) throw new Error("Pass catalog.json and real-pair-inputs root.");
 const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]),"utf8"));
 const root = path.resolve(process.argv[3]);

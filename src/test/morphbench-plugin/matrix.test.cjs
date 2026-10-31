@@ -6,7 +6,7 @@ const path = require("node:path");
 const cp = require("node:child_process");
 // Or preload the generated module with node --require <external>/matrix-kernel.js.
 if (process.env.CLAW_MATRIX_KERNEL) require(path.resolve(process.env.CLAW_MATRIX_KERNEL));
-const core = require("../src/core.js");
+const core = require("../../main/morphbench-plugin/web/core.js");
 const base = rules => ({ id: "CLAW.Matrix.Test", family: "HIMBO", version: "5.8", sex: "male", calibration: "authored-test", rules });
 const edge = (fn, extra = {}) => ({ source: fn === "constant" ? "" : "Human", target: "CLAWArmLean", gain: 1, cap: 1, function: fn, ...extra });
 

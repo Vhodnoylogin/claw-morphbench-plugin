@@ -2,12 +2,12 @@
 // Executes the actual public SDK and shipped consumer scripts. This detached
 // protocol/DOM harness is not a browser renderer or installed-host acceptance.
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path"), vm = require("node:vm");
-const { test } = require("node:test"), core = require("../src/core.js");
+const { test } = require("node:test"), core = require("../../main/morphbench-plugin/web/core.js");
 if (!process.argv[2] || !process.argv[3]) throw new Error("Pass catalog.json, actual addon-sdk.js and optionally real-pair-inputs root.");
 const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]), "utf8"));
 const sdkSource = fs.readFileSync(path.resolve(process.argv[3]), "utf8");
 const realRoot = process.argv[4] ? path.resolve(process.argv[4]) : null;
-const source = name => fs.readFileSync(path.join(__dirname, "../src", name), "utf8");
+const source = name => fs.readFileSync(path.join(__dirname, "../../main/morphbench-plugin/web", name), "utf8");
 class Element {
   constructor(tag = "div") { this.tagName = tag; this.value = ""; this.textContent = ""; this.disabled = false; this.checked = false; this.children = []; this.events = {}; this.files = []; }
   appendChild(child) { this.children.push(child); if (this.tagName === "select" && this.children.length === 1) this.value = child.value; return child; }

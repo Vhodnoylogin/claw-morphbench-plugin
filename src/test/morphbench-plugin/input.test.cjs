@@ -1,6 +1,6 @@
 "use strict";
 const assert = require("node:assert/strict"), { test } = require("node:test");
-const input = require("../src/input.js");
+const input = require("../../main/morphbench-plugin/web/input.js");
 test("preset percentages normalize once, preserve negative endpoints and interpolate weight0/.5/1", () => {
   const preset = input.fromRows("Human", "CBBE", [
     { name: "Butt", size: "small", value: "-50" }, { name: "Butt", size: "big", value: "100" },

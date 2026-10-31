@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const fs = require("node:fs");
 const path = require("node:path");
-const core = require("../src/core.js"), { PairState, RotationSynchronizer, equalRotation } = require("../src/pair.js");
+const core = require("../../main/morphbench-plugin/web/core.js"), { PairState, RotationSynchronizer, equalRotation } = require("../../main/morphbench-plugin/web/pair.js");
 if (!process.argv[2]) throw new Error("Pass the external build's catalog.json path.");
 const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]), "utf8"));
 const female = catalog.profiles.find(profile => profile.family === "3BA").id;

@@ -1,7 +1,7 @@
 "use strict";
 const assert = require("node:assert/strict"), fs = require("node:fs"), path = require("node:path"), os = require("node:os");
 const {spawnSync} = require("node:child_process"), {test} = require("node:test");
-const core = require("../src/core.js"), {PairState} = require("../src/pair.js");
+const core = require("../../main/morphbench-plugin/web/core.js"), {PairState} = require("../../main/morphbench-plugin/web/pair.js");
 const catalog = JSON.parse(fs.readFileSync(process.argv[2],"utf8"));
 const matrix = {...catalog.profiles.find(profile => profile.family === "HIMBO"),
   rules:[{source:"",target:"CLAWArmLean",gain:1,cap:1,function:"constant",value:.5}]};

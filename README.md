@@ -36,6 +36,25 @@ texture or skeleton. It imports no Morphbench backend, private renderer or DOM.
 It is a separate plugin ZIP, not part of either CLAW game package. The host SDK,
 manifest filename `addon.json` and its keys keep Morphbench's public names.
 
+## Repository and shared dependency
+
+This is the independent [CLAW Morphbench plugin repository](https://github.com/Vhodnoylogin/claw-morphbench-plugin).
+It contains this browser plugin, its tests and publication artwork. CLAW's game
+DLL, body authoring and runtime belong to [CLAW](https://github.com/Vhodnoylogin/claw).
+
+`dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml at
+CLAW commit `53e8f3872533f193483a4ee683d3bece1fe3eafa`, with per-file SHA256.
+They remain external build dependencies; there is no copied C++ evaluator or
+alternative conversion formula in this repository. The builder accepts
+`--claw-source-dir` for exact matching local files, or downloads the three pinned
+raw files into ignored `target/dependencies/`. Every file is verified before use.
+A newer local checkout is accepted only when those three files match the pins.
+
+Production source is under `src/main/morphbench-plugin`, tests under
+`src/test/morphbench-plugin`, and authored media/publication text under
+`src/main/resources`. All generated files and dependency caches belong in ignored
+`target/` or an external build directory. See [preserved history](docs/history.md).
+
 ## Use
 
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
@@ -68,7 +87,7 @@ the explicit **Apply to both previews** action.
 The function set is `linear`, `positive`, `negative`, `smoothstep`, `power`
 (integer exponent 1..8, preserving input sign) and `constant` (empty source with a
 finite value). Exact arithmetic is defined by the shared evaluator's
-[matrix contract](../../docs/matrix-contract.md). Every target's contribution
+[matrix contract](https://github.com/Vhodnoylogin/claw/blob/53e8f3872533f193483a4ee683d3bece1fe3eafa/docs/matrix-contract.md). Every target's contribution
 details show original input, transformed input, gain and contribution.
 
 **Export wolf preset JSON** preserves the complete matrix: profile ID, resource
@@ -199,20 +218,21 @@ Model loads, frame lifetime and renderer disposal remain the host's contract.
 
 ## Build and verify
 
-From CLAW with Python 3.12+ and Node.js 22+, using new external build directories:
+From this repository with Python 3.12+, Node.js22+ and clang with wasm32/wasm-ld support:
 
 ```powershell
-python tools/morphbench-addon/build.py --output-dir '<external-build>' --wasm-compiler '<external-clang.exe>'
-python -m unittest discover -s tools/morphbench-addon/tests -p 'test_*.py'
-node --require '<external-build>/matrix-kernel.js' tools/morphbench-addon/tests/core.test.cjs '<external-build>/catalog.json'
-node --require '<external-build>/matrix-kernel.js' tools/morphbench-addon/tests/pair-state.test.cjs '<external-build>/catalog.json'
-node tools/morphbench-addon/tests/input.test.cjs
-node tools/morphbench-addon/tests/preview-controller.test.cjs
-node --require '<external-build>/matrix-kernel.js' tools/morphbench-addon/tests/sdk-integration.cjs '<external-build>/catalog.json' '<host>/web/addon-sdk.js' '<external-real-pair-inputs>'
-node --require '<external-build>/matrix-kernel.js' tools/morphbench-addon/tests/matrix.test.cjs '<external-build>/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>' '<external-real-pair-inputs>/fixtures-full-preset-reconstruction.json'
+python build.py --output-dir target/plugin --wasm-compiler '<external-clang.exe>'
+# Optional offline dependency source: add --claw-source-dir '<matching-claw-checkout>'
+python -m unittest discover -s src/test/morphbench-plugin -p 'test_*.py'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/core.test.cjs './target/plugin/catalog.json'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/pair-state.test.cjs './target/plugin/catalog.json'
+node src/test/morphbench-plugin/input.test.cjs
+node src/test/morphbench-plugin/preview-controller.test.cjs
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sdk-integration.cjs './target/plugin/catalog.json' '<host>/web/addon-sdk.js' '<external-real-pair-inputs>'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/matrix.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>' '<external-real-pair-inputs>/fixtures-full-preset-reconstruction.json'
 ```
 
-The builder reads canonical `distribution/profiles/MorphLinks.xml`, validates all
+The builder reads the hash-pinned external `distribution/profiles/MorphLinks.xml`, validates all
 three resource families and preserves XML order. It emits ten local browser
 assets in a deterministic ZIP, with an external catalog and SHA-256 build report.
 The SDK is loaded from the host and is never copied into the package. The host's

@@ -1,8 +1,8 @@
 "use strict";
 const assert = require("node:assert/strict");
 const { test } = require("node:test");
-const core = require("../src/core.js");
-const { PreviewController } = require("../src/preview-controller.js");
+const core = require("../../main/morphbench-plugin/web/core.js");
+const { PreviewController } = require("../../main/morphbench-plugin/web/preview-controller.js");
 const catalog = { schemaVersion: 1, profiles: [
   { id: "female.3BA", family: "3BA", sex: "female", rules: [{ source: "Belly", target: "CLAWTorsoBellyRound", gain: .75, cap: .8 }] },
   { id: "female.CBBE", family: "CBBE", sex: "female", rules: [{ source: "Belly", target: "CLAWTorsoBellyRound", gain: .5, cap: 1 }] },

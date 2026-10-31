@@ -3,7 +3,7 @@ const assert = require("node:assert/strict");
 const { test } = require("node:test");
 const fs = require("node:fs");
 const path = require("node:path");
-const core = require("../src/core.js");
+const core = require("../../main/morphbench-plugin/web/core.js");
 if (!process.argv[2]) throw new Error("Pass the external build's catalog.json path.");
 const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]), "utf8"));
 const male = "CLAW.HIMBO.5.8.Geometry1", female = "CLAW.3BA.2.48.Geometry1";

@@ -1,16 +1,18 @@
-"""Strict canonical mapping ingestion checks; no game, host or output files."""
+"""Canonical mapping and pinned dependency checks; no game or live host."""
 import importlib.util
 from pathlib import Path
 import unittest
+import tempfile
+from unittest.mock import patch
 
-SPEC = importlib.util.spec_from_file_location("claw_addon_build", Path(__file__).parents[1] / "build.py")
+SPEC = importlib.util.spec_from_file_location("claw_addon_build", Path(__file__).resolve().parents[2] / "main/morphbench-plugin/build.py")
 builder = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(builder)
 
 
 class BuildTests(unittest.TestCase):
     def setUp(self):
-        self.source = builder.SOURCE.read_bytes()
+        self.source = (builder.dependency_root() / builder.SOURCE_RELATIVE).read_bytes()
 
     def test_current_canonical_profiles_are_pinned_and_ordered(self):
         catalog = builder.catalog_from_bytes(self.source)
@@ -51,6 +53,27 @@ class BuildTests(unittest.TestCase):
     def test_output_inside_the_checkout_is_rejected_before_writes(self):
         with self.assertRaisesRegex(ValueError, "outside"):
             builder.build(builder.REPOSITORY / "work/addon-output")
+
+    def test_local_dependency_hash_mismatch_is_rejected_without_network(self):
+        builder.TARGET.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=builder.TARGET) as directory:
+            root = Path(directory)
+            self.assertTrue(root.resolve().is_relative_to(builder.TARGET.resolve()))
+            relative = next(iter(builder.PIN["files"]))
+            path = root / relative
+            path.parent.mkdir(parents=True)
+            path.write_bytes(b"changed source")
+            with patch.object(builder.urllib.request, "urlopen", side_effect=AssertionError("Local dependencies must not fetch")):
+                with self.assertRaisesRegex(ValueError, "hash mismatch"):
+                    builder.dependency_root(root)
+
+    def test_missing_explicit_local_dependency_never_falls_back_to_network(self):
+        builder.TARGET.mkdir(exist_ok=True)
+        with tempfile.TemporaryDirectory(dir=builder.TARGET) as directory:
+            self.assertTrue(Path(directory).resolve().is_relative_to(builder.TARGET.resolve()))
+            with patch.object(builder.urllib.request, "urlopen", side_effect=AssertionError("Local dependencies must not fetch")):
+                with self.assertRaisesRegex(ValueError, "Missing pinned"):
+                    builder.dependency_root(Path(directory))
 
     def test_function_parameters_and_constant_bias_are_preserved(self):
         source = self.source.replace(b'<Rule source="Arms"', b'<Rule function="power" exponent="3" source="Arms"', 1)

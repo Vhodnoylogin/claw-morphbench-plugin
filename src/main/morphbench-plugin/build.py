@@ -1,7 +1,7 @@
-"""Build the CLAW browser addon from its own sources and canonical MorphLinks.xml.
+"""Build the independent browser plugin against the pinned CLAW matrix kernel.
 
-Only the Python standard library is used. All generated output must stay outside
-the CLAW checkout. ZIP contents and timestamps are deterministic.
+Only the Python standard library is used. Generated output belongs in ignored
+target/ or an external build directory. ZIP contents and timestamps are deterministic.
 """
 from __future__ import annotations
 
@@ -18,10 +18,14 @@ import shutil
 import subprocess
 import xml.etree.ElementTree as ET
 import zipfile
+import urllib.request
 
 HERE = Path(__file__).resolve().parent
-REPOSITORY = HERE.parents[1]
-SOURCE = REPOSITORY / "distribution/profiles/MorphLinks.xml"
+REPOSITORY = HERE.parents[2]
+TARGET = REPOSITORY / "target"
+PIN = json.loads((REPOSITORY / "dependencies.json").read_text(encoding="utf-8"))["claw"]
+SOURCE_RELATIVE = "distribution/profiles/MorphLinks.xml"
+SOURCE = TARGET / "dependencies/claw" / PIN["commit"] / SOURCE_RELATIVE
 BODY_TARGETS = frozenset((
     "CLAWArmGirth", "CLAWLegCalfGirth", "CLAWLegThighGirth",
     "CLAWTorsoBackWide", "CLAWTorsoBellyRound", "CLAWTorsoBreastSize",
@@ -30,6 +34,32 @@ BODY_TARGETS = frozenset((
     "CLAWArmLean", "CLAWLegThighLean", "CLAWLegCalfLean", "CLAWTorsoLean",
 ))
 ASSETS = ("addon.json", "index.html", "core.js", "pair.js", "input.js", "preview-controller.js", "main.js", "style.css")
+
+
+def dependency_root(source_dir: Path | None = None) -> Path:
+    """Use exact pinned local files or fetch their public immutable raw versions."""
+    source_dir = source_dir or os.environ.get("CLAW_SOURCE_DIR")
+    local = source_dir is not None
+    root = Path(source_dir).resolve() if local else SOURCE.parents[2]
+    if PIN["repository"] != "https://github.com/Vhodnoylogin/claw" or not re.fullmatch(r"[0-9a-f]{40}", PIN["commit"]):
+        raise ValueError("Unsupported CLAW dependency pin")
+    for relative, expected in PIN["files"].items():
+        path = root / relative
+        if not path.resolve().is_relative_to(root) or not re.fullmatch(r"[0-9a-f]{64}", expected):
+            raise ValueError("Invalid dependency path or hash")
+        if not path.is_file():
+            if local:
+                raise ValueError("Missing pinned CLAW dependency: " + relative)
+            url = "https://raw.githubusercontent.com/Vhodnoylogin/claw/" + PIN["commit"] + "/" + relative
+            with urllib.request.urlopen(url, timeout=30) as response:
+                content = response.read(1024 * 1024 + 1)
+            if len(content) > 1024 * 1024 or hashlib.sha256(content).hexdigest() != expected:
+                raise ValueError("Downloaded CLAW dependency hash mismatch: " + relative)
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(content)
+        if hashlib.sha256(path.read_bytes()).hexdigest() != expected:
+            raise ValueError("Pinned CLAW dependency hash mismatch: " + relative)
+    return root
 
 
 def identifier(value: str) -> bool:
@@ -113,17 +143,18 @@ def catalog_from_bytes(data: bytes) -> dict:
     if families != {"CBBE", "3BA", "HIMBO"}:
         raise ValueError("Expected one current CBBE, 3BA and HIMBO profile")
     return {"schemaVersion": 1,
-            "source": {"path": "distribution/profiles/MorphLinks.xml",
+            "source": {"repository": PIN["repository"], "commit": PIN["commit"], "path": SOURCE_RELATIVE,
                        "sha256": hashlib.sha256(data).hexdigest()},
             "numericContract": "float32 inputs/gains/caps/constants; binary64 function evaluation and sum(gain*F(input)) in XML order; float32(clamp(sum,0,1)*cap); docs/matrix-contract.md",
             "profiles": profiles}
 
 
-def compile_kernel(output_dir: Path, compiler: str | None = None) -> tuple[bytes, dict]:
+def compile_kernel(output_dir: Path, compiler: str | None = None,
+                   claw_source_dir: Path | None = None) -> tuple[bytes, dict]:
     compiler = compiler or os.environ.get("CLAW_WASM_COMPILER") or shutil.which("clang")
     if not compiler:
         raise ValueError("Provide --wasm-compiler or CLAW_WASM_COMPILER pointing to clang with wasm-ld support")
-    shared = REPOSITORY / "distribution/shared"
+    shared = dependency_root(claw_source_dir) / "distribution/shared"
     sources = {name: (shared / name).read_bytes() for name in ("MatrixKernel.h", "MatrixKernel.cpp")}
     digest = hashlib.sha256(b"".join(name.encode()+b"\0"+data for name, data in sources.items())).hexdigest()
     wasm = output_dir / "matrix-kernel.wasm"
@@ -140,7 +171,7 @@ def compile_kernel(output_dir: Path, compiler: str | None = None) -> tuple[bytes
     if not data.startswith(b"\x00asm\x01\x00\x00\x00"):
         raise ValueError("Invalid WASM kernel")
     wasm_sha = hashlib.sha256(data).hexdigest()
-    template = (HERE / "src/matrix-kernel.template.js").read_text(encoding="utf-8")
+    template = (HERE / "web/matrix-kernel.template.js").read_text(encoding="utf-8")
     bridge = template.replace("__CLAW_WASM_BASE64__", base64.b64encode(data).decode()).replace("__CLAW_SOURCE_SHA256__", digest).replace("__CLAW_WASM_SHA256__", wasm_sha).encode()
     (output_dir / "matrix-kernel.js").write_bytes(bridge)
     return bridge, {"abi": 1, "sourceSha256": digest, "wasmSha256": wasm_sha,
@@ -149,19 +180,22 @@ def compile_kernel(output_dir: Path, compiler: str | None = None) -> tuple[bytes
                     "command": command, "bytes": len(data)}
 
 
-def build(output_dir: Path, compiler: str | None = None) -> dict:
+def build(output_dir: Path, compiler: str | None = None,
+          claw_source_dir: Path | None = None) -> dict:
     output_dir = output_dir.resolve()
-    if output_dir == REPOSITORY or REPOSITORY in output_dir.parents:
-        raise ValueError("Generated output must be outside the CLAW checkout")
+    if (output_dir == REPOSITORY or REPOSITORY in output_dir.parents) and not (output_dir == TARGET or TARGET in output_dir.parents):
+        raise ValueError("Generated output must be outside the checkout or inside ignored target/")
+    dependency = dependency_root(claw_source_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-    bridge, kernel = compile_kernel(output_dir, compiler)
-    catalog = catalog_from_bytes(SOURCE.read_bytes())
-    catalog["generator"] = {"path": "tools/morphbench-addon/build.py",
+    bridge, kernel = compile_kernel(output_dir, compiler, dependency)
+    catalog = catalog_from_bytes((dependency / SOURCE_RELATIVE).read_bytes())
+    dependency_root(dependency)
+    catalog["generator"] = {"path": "src/main/morphbench-plugin/build.py",
                             "sha256": hashlib.sha256(Path(__file__).read_bytes().replace(b"\r\n", b"\n")).hexdigest()}
-    assets = {name: (HERE / "src" / name).read_bytes().replace(b"\r\n", b"\n") for name in ASSETS}
+    assets = {name: (HERE / "web" / name).read_bytes().replace(b"\r\n", b"\n") for name in ASSETS}
     assets["matrix-kernel.js"] = bridge
     catalog["sharedKernel"] = {key:value for key,value in kernel.items() if key not in ("command", "compilerVersion")}
-    catalog["evaluator"] = {"path": "tools/morphbench-addon/src/core.js",
+    catalog["evaluator"] = {"path": "src/main/morphbench-plugin/web/core.js",
                             "sha256": hashlib.sha256(assets["core.js"]).hexdigest()}
     manifest = json.loads(assets["addon.json"])
     if not re.fullmatch(r"[a-z][a-z0-9-]{0,63}", manifest["id"]):
@@ -191,10 +225,11 @@ def build(output_dir: Path, compiler: str | None = None) -> dict:
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--output-dir", required=True, type=Path)
+    parser.add_argument("--output-dir", type=Path, default=TARGET / "plugin")
     parser.add_argument("--wasm-compiler", help="External clang executable with wasm32/wasm-ld support")
+    parser.add_argument("--claw-source-dir", type=Path, help="Local CLAW checkout containing all three exact hash-pinned dependency files; otherwise fetch them into ignored target/")
     args = parser.parse_args()
-    print(json.dumps(build(args.output_dir, args.wasm_compiler), indent=2))
+    print(json.dumps(build(args.output_dir, args.wasm_compiler, args.claw_source_dir), indent=2))
 
 
 if __name__ == "__main__":
