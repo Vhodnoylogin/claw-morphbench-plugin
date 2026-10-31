@@ -272,7 +272,7 @@
   function addEdge(constant) {
     matrixChange(candidate => {
       const pair = controller && controller.pair;
-      if (candidate.rules.length >= 128) throw new Error("A matrix supports at most 128 raw edges.");
+      if (candidate.rules.length >= window.CLAWMatrixKernel.maxRules) throw new Error("A matrix supports at most " + window.CLAWMatrixKernel.maxRules + " raw edges.");
       const sourceOptions = new Map();
       for (const name of [...candidate.rules.map(rule => rule.source).filter(Boolean), ...(pair ? pair.human.names : []), ...Object.keys(values()), "$actor.weight"]) {
         const identity = core.providerIdentity(name); if (!sourceOptions.has(identity)) sourceOptions.set(identity, name);

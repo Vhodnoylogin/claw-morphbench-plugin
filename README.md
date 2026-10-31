@@ -1,11 +1,11 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.5**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.6**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. Dev.5 pins CLAW `220e2df`: the native/WASM kernel shares reserved
+coefficients. Dev.6 pins CLAW `4c2cdd9`: the native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
 simulation are bundled with this plugin.
@@ -46,10 +46,13 @@ settings, opened and applied Vanilla female and HIMBO male pairs. Both exported
 vectors match the native CLI bit-for-bit; a browser-exported pair of Vanilla
 matrices passes native parsing. This does not certify Launcher installation,
 its native window, Nexus availability or game behavior.
-Dev.5 adds 138 passing offline checks, including 23 checks against that released
-0.8.6 SDK with the packaged plugin scripts, and 50 new native/WASM human-trait
-parity cases. These checks provide no new browser-rendered acceptance; the
-historical dev.4 browser observations do not qualify the revised candidate.
+Dev.6 passes 141 offline checks, including 23 checks against that released
+0.8.6 SDK with the packaged plugin scripts, 50 native/WASM human-trait parity
+cases, 256-edge capacity boundaries and six retained actual-input vectors.
+Capacity comes from the shared kernel exports. The current catalog includes
+separate biceps/triceps targets while arbitrary model targets remain supported.
+These checks provide no new browser-rendered acceptance; the historical dev.4
+browser observations do not qualify the revised candidate.
 
 Recorded local 0.3 browser checks on 31 October opened male/female pairs, applied real
 thin/muscular vectors, rotated both directions, downloaded an 18,837-byte matrix,
@@ -95,7 +98,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.5`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.6`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
@@ -134,7 +137,7 @@ sources are `$human.face.noseLength`, `$human.face.jawWidth`,
 and `$human.height`. Native capture reads vanilla FaceGen record scalars and NPC
 NAM6 times human racial height; custom RaceMenu face values, sculpt geometry,
 reference scale and node transforms are not those channels. The
-[native source contract](https://github.com/Vhodnoylogin/claw/blob/220e2df50a0b14656fc410f75b0dacd7f650f87f/src/main/docs/human-head-traits.md)
+[native source contract](https://github.com/Vhodnoylogin/claw/blob/4c2cdd9da22be8cf9b1e702b99824e055e9aeaf3/src/main/docs/human-head-traits.md)
 defines the exact reads and authored projection limits.
 
 Use the numeric controls or JSON to supply captured values or declare preview

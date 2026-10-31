@@ -90,7 +90,7 @@ def float32(value: str) -> float:
 GAIN_EPSILON = float32("1e-6")
 
 
-def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False) -> dict:
+def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False, max_rules: int = 256, max_targets: int = 64) -> dict:
     if (len(data) > 1024 * 1024 or any(byte >= 127 or (byte < 32 and byte not in (9, 10, 13)) for byte in data)
             or b"<!" in data or b"<?" in data or b"&" in data):
         raise ValueError("Oversize XML or unsupported declarations/entities")
@@ -123,7 +123,7 @@ def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False) -> dict:
         ids.add(profile_id)
         families.add((family, metadata["sex"]))
         rules, raw_rules, pairs, caps, source_names, target_names = [], [], set(), {}, {}, {}
-        if len(child) > 128:
+        if len(child) > max_rules:
             raise ValueError("Invalid raw rule count")
         for rule in child:
             function = rule.attrib.get("function", "linear")
@@ -169,8 +169,8 @@ def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False) -> dict:
             pairs.add((source, target))
             caps[target] = cap
             rules.append(edge)
-        if len(caps) > 64:
-            raise ValueError("A sparse matrix supports at most 64 active targets")
+        if len(caps) > max_targets:
+            raise ValueError(f"A sparse matrix supports at most {max_targets} active targets")
         if source_names.keys() & target_names.keys():
             raise ValueError("Active source and target names must not overlap")
         metadata["rules"] = raw_rules if retain_inactive else rules
@@ -202,7 +202,8 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
                "-Wl,--no-entry", "-Wl,--export-memory", "-Wl,--export=__heap_base",
                *["-Wl,--export="+name for name in ("claw_matrix_transform", "claw_matrix_contribution", "claw_matrix_clamp", "claw_matrix_evaluate",
                                                     "claw_matrix_gain_active", "claw_matrix_gain_epsilon",
-                                                    "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral")],
+                                                    "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral",
+                                                    "claw_matrix_max_rules", "claw_matrix_max_targets")],
                str(shared / "MatrixKernel.cpp"), "-o", str(wasm)]
     subprocess.run(command, check=True, capture_output=True, text=True)
     for name, data in sources.items():
@@ -238,8 +239,13 @@ def validate_shared_catalog(catalog: dict, bridge: Path) -> None:
 def catalog_with_shared_validation(data: bytes, bridge: Path) -> dict:
     # Preserve every structurally checked edge until the shared semantic gate.
     # Inactive edges cannot hide unsupported reserved names from that gate.
-    validate_shared_catalog(catalog_from_bytes(data, retain_inactive=True), bridge)
-    return catalog_from_bytes(data)
+    node = shutil.which("node")
+    if not node:
+        raise ValueError("Node.js is required to read the shared matrix capacities")
+    limits = json.loads(subprocess.check_output([node, "--require", str(bridge), "-e",
+        "console.log(JSON.stringify({max_rules:CLAWMatrixKernel.maxRules,max_targets:CLAWMatrixKernel.maxTargets}))"], text=True))
+    validate_shared_catalog(catalog_from_bytes(data, retain_inactive=True, **limits), bridge)
+    return catalog_from_bytes(data, **limits)
 
 
 def build(output_dir: Path, compiler: str | None = None,

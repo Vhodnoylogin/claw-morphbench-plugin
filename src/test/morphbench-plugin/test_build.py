@@ -139,14 +139,14 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, '64 active'):
             builder.catalog_from_bytes(self.sparse(''.join(rows)))
         with self.assertRaisesRegex(ValueError, 'raw rule count'):
-            builder.catalog_from_bytes(self.sparse('<Rule source="A" target="B" gain="0" cap="1" />' * 129))
+            builder.catalog_from_bytes(self.sparse('<Rule source="A" target="B" gain="0" cap="1" />' * 257))
 
     def test_provider_case_aliases_and_non_ascii_names_are_rejected_after_pruning(self):
         for rules in (
             '<Rule source="Human" target="human" gain="1" cap="1" />',
             '<Rule source="Human" target="Target" gain="1" cap="1" /><Rule source="human" target="Other" gain="1" cap="1" />',
             '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="Other" target="ear.size" gain="1" cap="1" />',
-            '<Rule source="Human" target="Targeté" gain="0" cap="1" />'):
+            '<Rule source="Human" target="TargetГ©" gain="0" cap="1" />'):
             with self.subTest(rules=rules), self.assertRaises(ValueError):
                 builder.catalog_from_bytes(self.sparse(rules))
         rules = '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="human" target="ear.size" gain="0" cap="1" />'

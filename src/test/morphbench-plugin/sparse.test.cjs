@@ -38,7 +38,7 @@ test("generic morph names preserve spelling with provider-folded source lookup a
   const folded=core.evaluateMatrix(profile,{clawcustomhuman:.5});
   assert.equal(folded.values["Author.Custom"],.5);assert.deepEqual(folded.unmapped,[]);
   assert.throws(()=>core.validateHuman({Human:1,human:1}),/case aliases/);
-  assert.throws(()=>core.validateHuman({"é":1}),/ASCII/);
+  assert.throws(()=>core.validateHuman({"Г©":1}),/ASCII/);
 });
 
 test("pruning follows structural validation and precedes duplicate, cap and collision checks",()=>{
@@ -70,7 +70,7 @@ test("JSON and XML interchange omit inactive edges and the default linear functi
   const empty=input.parseMatrixJSON(input.matrixJSON(base([edge(-1e-6)])));
   assert.deepEqual(empty.rules,[]);assert.doesNotMatch(core.exportMatrix(empty),/<Rule /);
   assert.throws(()=>core.exportMatrix(base([edge(1,{target:'name" attribute="injected'})])),/plain ASCII/);
-  assert.throws(()=>core.exportMatrix(base([edge(1,{target:"Targeté"})])),/Invalid CLAW mapping/);
+  assert.throws(()=>core.exportMatrix(base([edge(1,{target:"TargetГ©"})])),/Invalid CLAW mapping/);
 });
 
 test("native XML import selects an exact profile and shares sparse/default-function validation",()=>{
@@ -88,7 +88,7 @@ test("native XML import selects an exact profile and shares sparse/default-funct
   assert.throws(()=>input.parseMatrixXML("<MorphLinkProfiles/>",{...metadata,id:"other"},Parser),/matching human family/);
   documentNode=node("MorphLinkProfiles",{schemaVersion:"1"},[node("Profile",metadata,[node("Rule",{...rawRule,gain:"0",function:""})])]);
   assert.throws(()=>input.parseMatrixXML("<MorphLinkProfiles/>",metadata,Parser),/Invalid CLAW mapping/);
-  documentNode=node("MorphLinkProfiles",{schemaVersion:"1"},[node("Profile",metadata,[node("Rule",{...rawRule,target:"é"})])]);
+  documentNode=node("MorphLinkProfiles",{schemaVersion:"1"},[node("Profile",metadata,[node("Rule",{...rawRule,target:"Г©"})])]);
   assert.throws(()=>input.parseMatrixXML("<MorphLinkProfiles/>",metadata,Parser),/plain ASCII/);
   for(const unsafe of ['<!DOCTYPE MorphLinkProfiles><MorphLinkProfiles/>','<MorphLinkProfiles value="&quot;"/>']){
     assert.throws(()=>input.parseMatrixXML(unsafe,metadata,Parser),/declarations\/entities/);
@@ -99,8 +99,8 @@ test("raw rule and active target limits are enforced independently",()=>{
   const rows=Array.from({length:64},(_,i)=>edge(1,{source:"H"+i,target:"Custom"+i}));
   assert.equal(Object.keys(core.evaluateMatrix(base(rows),{}).values).length,64);
   assert.throws(()=>core.validateMatrix(base([...rows,edge(1,{source:"H64",target:"Custom64"})])),/64 active targets/);
-  assert.equal(core.validateMatrix(base(Array.from({length:128},()=>edge(0)))).rules.length,0);
-  assert.throws(()=>core.validateMatrix(base(Array.from({length:129},()=>edge(0)))));
+  assert.equal(core.validateMatrix(base(Array.from({length:256},()=>edge(0)))).rules.length,0);
+  assert.throws(()=>core.validateMatrix(base(Array.from({length:257},()=>edge(0)))));
 });
 
 test("game XML exports exactly the selected male/female pair without losing edited female data",()=>{
@@ -204,7 +204,7 @@ if(process.argv[3]&&process.argv[4])test("native parser rejects active aliases, 
   const invalid=[rule("Input","Target",0,0),rule("Input","T1")+rule("input","T2"),
     rule("I1","Target")+rule("I2","target"),rule("Human","human"),
     Array.from({length:65},(_,i)=>rule("H"+i,"T"+i)).join(""),
-    Array.from({length:129},()=>rule("Input","Target",0)).join("")];
+    Array.from({length:257},()=>rule("Input","Target",0)).join("")];
   const filename=path.join(directory,"sparse-invalid.xml");
   for(const rows of invalid){
     fs.writeFileSync(filename,'<MorphLinkProfiles schemaVersion="1"><Profile id="CLAW.Sparse.Test" family="HIMBO" version="1" sex="male" calibration="test">'+rows+'</Profile></MorphLinkProfiles>');

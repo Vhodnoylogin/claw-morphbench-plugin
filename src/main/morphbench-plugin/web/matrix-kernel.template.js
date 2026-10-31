@@ -10,12 +10,12 @@
     throw new Error("CLAW shared computation kernel could not start. This Morphbench host must permit packaged WebAssembly. " + error.message);
   }
   const exports = instance.exports;
-  if (["claw_matrix_gain_active", "claw_matrix_gain_epsilon", "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral"].some(name => typeof exports[name] !== "function")) {
+  if (["claw_matrix_gain_active", "claw_matrix_gain_epsilon", "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral", "claw_matrix_max_rules", "claw_matrix_max_targets"].some(name => typeof exports[name] !== "function")) {
     throw new Error("CLAW sparse matrix kernel exports are unavailable.");
   }
   const functions = Object.freeze({ linear: 0, positive: 1, negative: 2, smoothstep: 3, power: 4, constant: 5 });
   const base = (Number(exports.__heap_base.value) + 7) & ~7;
-  const ruleBytes = 28, maxRules = 128, maxTargets = 64;
+  const ruleBytes = 28, maxRules = exports.claw_matrix_max_rules(), maxTargets = exports.claw_matrix_max_targets();
   const outputs = base + ruleBytes * maxRules;
   const sums = outputs + 4 * maxTargets;
   const namePointer = sums + 8 * maxTargets;
@@ -58,7 +58,7 @@
       }))
     };
   }
-  global.CLAWMatrixKernel = Object.freeze({ evaluate, sourceKind,
+  global.CLAWMatrixKernel = Object.freeze({ evaluate, sourceKind, maxRules, maxTargets,
     sourceNeutral: kind => exports.claw_matrix_source_neutral(kind),
     sourceValueValid: (kind, value) => Boolean(exports.claw_matrix_source_value_valid(kind, value)),
     gainActive: gain => Boolean(exports.claw_matrix_gain_active(gain)),

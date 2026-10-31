@@ -35,6 +35,7 @@
   function kernel() {
     const value = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
     if (!value || ["gainActive", "sourceKind", "sourceValueValid", "sourceNeutral"].some(name => typeof value[name] !== "function")) fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
+    if (!Number.isSafeInteger(value.maxRules) || value.maxRules <= 0 || !Number.isSafeInteger(value.maxTargets) || value.maxTargets <= 0) fail("Shared CLAW capacity exports are unavailable.");
     return value;
   }
   function validateHuman(values) {
@@ -76,7 +77,7 @@
         !["male", "female"].includes(profile.sex) ||
         (profile.family !== "Vanilla" && profile.sex !== (profile.family === "HIMBO" ? "male" : "female")) ||
         Object.keys(profile).some(key => !["id", "family", "sex", "version", "calibration", "rules"].includes(key)) ||
-        !Array.isArray(profile.rules) || profile.rules.length > 128) {
+        !Array.isArray(profile.rules) || profile.rules.length > kernel().maxRules) {
       fail("Invalid CLAW profile metadata.");
     }
     for (const key of ["version", "calibration"]) {
@@ -120,7 +121,7 @@
       caps.set(rule.target, cap);
       normalized.rules.push(edge);
     }
-    if (caps.size > 64) fail("A sparse matrix supports at most 64 active targets.");
+    if (caps.size > kernel().maxTargets) fail("A sparse matrix supports at most " + kernel().maxTargets + " active targets.");
     if (Array.from(sourceNames.keys()).some(name => targetNames.has(name))) fail("Active source and target names must not overlap by provider identity.");
     return normalized;
   }

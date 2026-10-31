@@ -35,7 +35,9 @@ test("missing traits remain unavailable while explicit neutral zeros/height1 hav
     assert.deepEqual(available.unavailableTraits,[]);assert.deepEqual(available.values,missing.values);
     const head=core.evaluateMatrix(p,{},.5,traits);
     assert.deepEqual(head.unavailableTraits,[]);
-    assert.equal(head.values.CLAWHeadSize,.1875);assert.equal(head.values.CLAWHeadEarSize,.1875);
+    assert.equal(head.values.CLAWHeadSize,.1875);
+    assert.equal(core.evaluateMatrix(p,{},.5,{"$human.height":1.125}).values.CLAWHeadEarSize,.1875);
+    assert.ok(head.values.CLAWHeadEarSize>=.1875); // Explicit face-breadth edges may add to stature.
     assert.equal(head.values.CLAWTailLength,.25);assert.equal(head.values.CLAWArmClawLong,.15625);
   }
 });

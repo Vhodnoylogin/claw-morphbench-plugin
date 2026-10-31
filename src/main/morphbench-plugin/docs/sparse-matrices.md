@@ -7,11 +7,16 @@ the 28-byte rule layout. The shared `claw_matrix_gain_active` and
 `claw_matrix_source_kind` and `claw_matrix_source_value_valid` define reserved
 actor/human sources and their value domain, including the builder's final catalog
 gate. `claw_matrix_source_neutral` supplies unavailable human-channel arithmetic
-neutrals; JavaScript contains no alternative binding formula.
+neutrals; JavaScript contains no alternative binding formula. The
+`claw_matrix_max_rules` and `claw_matrix_max_targets` exports define buffer and
+validation capacities: currently 256 raw rules and 64 distinct active targets.
+Native file profiles use this same capacity. The legacy Papyrus
+`ConfigureMorphLink` entry point retains its 128-entry API policy; that does not
+limit the plugin or file-profile parser.
 
 ## Validation and omission order
 
-1. Validate metadata and at most 128 raw edges. Validate each edge's identifiers,
+1. Validate metadata and at most 256 raw edges. Validate each edge's identifiers,
    function, allowed parameters, finite float32 gain/cap/value and cap in (0,1].
    A power exponent is an integer 1..8. A constant uses an empty source.
 2. Normalize gain to float32 and omit `abs(gain) <= 1e-6F`, including signed zero.
