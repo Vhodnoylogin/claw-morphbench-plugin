@@ -62,7 +62,7 @@
     el("comparison-status").textContent = "Calculated minus " + (reference ? "reference coefficient snapshot (omitted targets = zero)" : "canonical matrix at the same human inputs") +
       ": maximum absolute difference " + format(comparison.maximum) + "; RMS " + format(comparison.rms) + ".";
     el("matrix-status").textContent = (matrixEdited ? "Edited/imported wolf matrix" : "Canonical wolf matrix") + " · " + matrix.rules.length + " ordered sparse edges · " + matrix.id +
-      ". Matrix preset includes family/version/sex and functions; coefficient snapshots are diagnostics.";
+      ". Zero/near-zero edges are omitted; linear is the default. Targets are checked against the selected model before writes. Coefficient snapshots are diagnostics.";
     return result;
   }
   function refreshSliderValues() {
@@ -79,7 +79,7 @@
     const revision = ++inputRevision;
     try { calculate(); const result = await controller.apply(values(), matrix);
       if (revision === inputRevision) status("Applied " + Object.keys(result.humanValues).length + " human inputs and " +
-        Object.keys(result.wolfValues).length + " derived wolf body targets. The host links rotation from either panel.");
+        Object.keys(result.wolfValues).length + " derived wolf targets. The host links rotation from either panel.");
     } catch (error) { showError(error); } buttons();
   }
   function edited(name) {
@@ -118,7 +118,7 @@
       el("geometry-status").textContent = "Vertex snapshot invalidated by a preview change. Read again for current vertices.";
       el("geometry-shape").disabled = true; el("geometry-page").disabled = true; }
     const bindingKey = pair ? pair.human.preview + ":" + pair.wolf.preview : null;
-    if (bindingKey !== sliderPairKey) { sliderPairKey = bindingKey; buildSliders(); }
+    if (bindingKey !== sliderPairKey) { sliderPairKey = bindingKey; buildSliders(); buildMatrix(); }
     buttons();
   }
   async function refreshModels() {
@@ -141,11 +141,20 @@
       else { if (controller && controller.pair) el("profile").value = controller.pair.profileId; showError(error); }
     } finally { busy = false; pairChanged(); }
   }
-  function resetMatrix() { matrix = core.getProfile(catalog, el("profile").value); matrixEdited = false; buildMatrix(); }
+  function resetMatrix() {
+    matrix = checkedMatrix(core.getProfile(catalog, el("profile").value)); matrixEdited = false;
+    if (matrix.sex === "female") el("game-female-family").value = matrix.family;
+    buildMatrix();
+  }
+  function checkedMatrix(candidate) {
+    const normalized = core.validateMatrix(candidate), pair = controller && controller.pair;
+    if (pair) core.validateModel(pair.wolf.scene, { names: pair.wolf.names }, Object.keys(core.evaluateMatrix(normalized, {}).values));
+    return normalized;
+  }
   function matrixChange(change) {
     try {
       const candidate = JSON.parse(JSON.stringify(matrix)); change(candidate);
-      matrix = core.validateMatrix(candidate); matrixEdited = true; ++inputRevision; el("live").checked = false;
+      matrix = checkedMatrix(candidate); matrixEdited = true; ++inputRevision; el("live").checked = false;
       calculate(); buildMatrix(); status("Wolf matrix updated locally. Apply to update both previews.");
     } catch (error) { buildMatrix(); showError(error); }
   }
@@ -157,7 +166,7 @@
   }
   function buildMatrix() {
     el("matrix-rows").replaceChildren(); if (!matrix) return;
-    const targets = Object.keys(core.evaluateMatrix(matrix, {}).values);
+    const targets = availableTargets(matrix);
     const addControl = (row, node) => { const td = document.createElement("td"); td.appendChild(node); row.appendChild(td); return node; };
     matrix.rules.forEach((rule, index) => {
       const row = document.createElement("tr"); cell(row, String(index + 1));
@@ -203,7 +212,7 @@
       for (const [label, offset] of [["↑", -1], ["↓", 1], ["×", 0]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
         button.setAttribute("aria-label", (offset ? "Move edge " + (offset < 0 ? "up" : "down") : "Remove edge") + " " + (index + 1));
-        button.disabled = offset ? index + offset < 0 || index + offset >= matrix.rules.length : matrix.rules.length === 1;
+        button.disabled = offset ? index + offset < 0 || index + offset >= matrix.rules.length : false;
         button.addEventListener("click", () => matrixChange(candidate => {
           if (!offset) candidate.rules.splice(index, 1);
           else [candidate.rules[index], candidate.rules[index + offset]] = [candidate.rules[index + offset], candidate.rules[index]];
@@ -212,12 +221,26 @@
       addControl(row, actions); el("matrix-rows").appendChild(row);
     }); filterMatrix();
   }
+  function availableTargets(current) {
+    const pair = controller && controller.pair;
+    return [...new Set([...(pair ? pair.wolf.names : []), ...current.rules.map(rule => rule.target),
+      ...core.getProfile(catalog, el("profile").value).rules.map(rule => rule.target)])];
+  }
   function addEdge(constant) {
     matrixChange(candidate => {
       const pair = controller && controller.pair;
-      const sources = constant ? [""] : [...new Set([...(pair ? pair.human.names : []), ...candidate.rules.map(rule => rule.source).filter(Boolean), ...Object.keys(values())])];
-      for (const target of Object.keys(core.evaluateMatrix(candidate, {}).values)) {
+      if (candidate.rules.length >= 128) throw new Error("A matrix supports at most 128 raw edges.");
+      const sourceOptions = new Map();
+      for (const name of [...candidate.rules.map(rule => rule.source).filter(Boolean), ...(pair ? pair.human.names : []), ...Object.keys(values())]) {
+        const identity = core.providerIdentity(name); if (!sourceOptions.has(identity)) sourceOptions.set(identity, name);
+      }
+      const sources = constant ? [""] : [...sourceOptions.values()];
+      const activeSources = new Set(candidate.rules.map(rule => rule.source).filter(Boolean).map(core.providerIdentity));
+      const activeTargets = new Set(candidate.rules.map(rule => core.providerIdentity(rule.target)));
+      for (const target of availableTargets(candidate)) {
+        if (activeSources.has(core.providerIdentity(target))) continue;
         for (const source of sources) {
+          if (source && (core.providerIdentity(source) === core.providerIdentity(target) || activeTargets.has(core.providerIdentity(source)))) continue;
           if (candidate.rules.some(edge => edge.source === source && edge.target === target)) continue;
           const existing = candidate.rules.find(edge => edge.target === target);
           const edge = { source, target, gain: 1, cap: existing ? existing.cap : 1, function: constant ? "constant" : "linear" };
@@ -263,13 +286,13 @@
   el("matrix-import").addEventListener("change", async () => {
     const file = el("matrix-import").files[0]; if (!file) return; const revision = ++inputRevision; el("live").checked = false;
     try { const text = await file.text(); if (revision !== inputRevision) return;
-      matrix = input.parseMatrixJSON(text, core.getProfile(catalog, el("profile").value)); matrixEdited = true;
+      matrix = checkedMatrix(input.parseMatrix(text, core.getProfile(catalog, el("profile").value))); matrixEdited = true;
       calculate(); buildMatrix(); status("Imported the complete wolf coefficient/function matrix. Apply to update both previews.");
     } catch (error) { showError(error); } finally { el("matrix-import").value = ""; }
   });
   el("matrix-paste-load").addEventListener("click", () => exportChecked(() => {
     ++inputRevision; el("live").checked = false;
-    matrix = input.parseMatrixJSON(el("matrix-paste").value, core.getProfile(catalog, el("profile").value)); matrixEdited = true;
+    matrix = checkedMatrix(input.parseMatrix(el("matrix-paste").value, core.getProfile(catalog, el("profile").value))); matrixEdited = true;
     calculate(); buildMatrix(); status("Loaded the pasted wolf coefficient/function matrix. Apply to update both previews.");
   }));
   el("snapshot-import").addEventListener("change", async () => {
@@ -340,7 +363,7 @@
   el("open-pair").addEventListener("click", async () => {
     busy = true; buttons(); el("live").checked = false;
     status("Opening the selected human and wolf resources…");
-    try { await controller.open(el("profile").value, el("human-model").value, el("wolf-model").value);
+    try { await controller.open(el("profile").value, el("human-model").value, el("wolf-model").value, matrix);
       status("Opened independent human and wolf panels. Rotate either one; apply the shared human vector when ready.");
     } catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });

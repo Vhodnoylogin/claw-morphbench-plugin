@@ -115,8 +115,8 @@ test("all names are validated before either write and full unmapped human fields
 });
 
 test("a missing wolf target refuses opening before any morph write", async () => {
-  const f = host({ wolfNames: wolfNames.filter(name => name !== "CLAWTorsoGirth") }), c = new PreviewController(f.sdk, catalog);
-  await assert.rejects(c.open("female.3BA", "human.nif", "wolf.nif"), /missing linked body targets/);
+  const f = host({ wolfNames: wolfNames.filter(name => name !== "CLAWTorsoBellyRound") }), c = new PreviewController(f.sdk, catalog);
+  await assert.rejects(c.open("female.3BA", "human.nif", "wolf.nif"), /missing linked targets/);
   assert.deepEqual([...f.previews.keys()], ["third-party"]);
   assert.equal(f.calls.filter(call => call.method === "previews.morphs.set").length, 0);
 });
@@ -160,6 +160,25 @@ test("family changes clear acknowledged wolf outputs only; sex changes demand re
   const zeroStart = f.calls.length; await f.controller.zeroWolf();
   assert.equal(f.calls.slice(zeroStart).filter(call => call.method === "previews.morphs.set").length, 0);
   assert.deepEqual(f.previews.get(pair.human.preview).values, human);
+});
+
+test("a refused family change preserves current authority and outputs for generic disjoint domains", async () => {
+  for (const rule of [{ source: "Belly", target: "Custom.Missing", gain: 1, cap: 1 },
+    { source: "MissingHumanSource", target: "CLAWTorsoBellyRound", gain: 1, cap: 1 }]) {
+    const local = { ...catalog, profiles: catalog.profiles.map(profile => profile.id === "female.CBBE" ? { ...profile, rules: [rule] } : profile) };
+    const fake = host(), controller = new PreviewController(fake.sdk, local);
+    await controller.open("female.3BA", "human.nif", "wolf.nif");
+    await controller.apply({ Belly: .5 });
+    const pair = controller.pair, before = fake.calls.length;
+    const wolfBefore = { ...fake.previews.get(pair.wolf.preview).values };
+    await assert.rejects(controller.changeProfile("female.CBBE"), /missing linked targets|no configured source/);
+    assert.deepEqual(controller.pair, pair);
+    assert.equal(fake.calls.slice(before).filter(call => call.method === "previews.morphs.set" || call.method === "previews.close").length, 0);
+    assert.deepEqual(fake.previews.get(pair.wolf.preview).values, wolfBefore);
+    const result = await controller.apply({ Belly: .75 });
+    assert.equal(result.profile.id, "female.3BA");
+    await controller.close();
+  }
 });
 
 test("writes serialize and unsent vectors coalesce with explicit superseded results", async () => {

@@ -77,41 +77,107 @@
     return presets;
   }
   function matrixJSON(profile) {
-    return JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: core.validateMatrix(profile) }, null, 2);
+    return JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: core.serializableMatrix(profile) }, null, 2);
   }
   function parseMatrixJSON(text, expectedProfile) {
+    if (typeof text !== "string" || new TextEncoder().encode(text).length > 1024 * 1024) fail("Wolf matrix input is oversized or invalid.");
     const parsed = JSON.parse(text);
-    if (!object(parsed) || parsed.schemaVersion !== 1 || parsed.kind !== "claw-wolf-matrix") fail("Expected a CLAW wolf matrix preset (schemaVersion 1).");
+    if (!object(parsed) || parsed.schemaVersion !== 1 || parsed.kind !== "claw-wolf-matrix" ||
+        Object.keys(parsed).some(key => !["schemaVersion", "kind", "profile"].includes(key))) fail("Expected a CLAW wolf matrix preset (schemaVersion 1).");
     const profile = core.validateMatrix(parsed.profile);
     if (expectedProfile && ["id", "family", "version", "sex"].some(key => profile[key] !== expectedProfile[key])) {
       fail("Wolf matrix resource family/version differs from the selected human family. Select its matching family first.");
     }
     return profile;
   }
+  function parseMatrixXML(text, expectedProfile, Parser = global.DOMParser) {
+    if (typeof text !== "string" || new TextEncoder().encode(text).length > 1024 * 1024 || /<!|<\?|&|[^\x09\x0a\x0d\x20-\x7e]/.test(text)) {
+      fail("Native matrix XML must be bounded generated XML without declarations/entities.");
+    }
+    if (typeof Parser !== "function") fail("XML matrix parsing requires the browser DOMParser.");
+    const doc = new Parser().parseFromString(text, "application/xml"), root = doc.documentElement;
+    if (doc.getElementsByTagName("parsererror").length || !root || root.tagName !== "MorphLinkProfiles") fail("Expected native MorphLinkProfiles XML.");
+    const attrs = element => Object.fromEntries(Array.from(element.attributes, attribute => {
+      const value = element.getAttribute(attribute.name);
+      if (/[^\x20-\x7e]|[&<>"']/.test(value)) fail("Native matrix XML fields require plain ASCII without XML delimiters.");
+      return [attribute.name, value];
+    }));
+    const rootAttrs = attrs(root);
+    if (Object.keys(rootAttrs).length !== 1 || rootAttrs.schemaVersion !== "1" || root.textContent.trim()) fail("Unsupported matrix XML schema or text.");
+    const profiles = [], ids = new Set(); let defaults = null;
+    const number = value => {
+      if (typeof value !== "string" || !/^-?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(value)) fail("Invalid matrix number.");
+      return finite(Number(value));
+    };
+    for (const element of Array.from(root.children)) {
+      const metadata = attrs(element);
+      if (element.tagName === "Defaults") {
+        if (defaults || !Object.keys(metadata).length || Object.keys(metadata).some(name => !["male", "female"].includes(name)) || element.children.length) fail("Invalid matrix defaults.");
+        defaults = Object.fromEntries(Object.entries(metadata).filter(([, id]) => id !== ""));
+        if (!Object.keys(defaults).length) fail("Matrix defaults cannot be empty.");
+        continue;
+      }
+      if (element.tagName !== "Profile" || Object.keys(metadata).length !== 5 ||
+          Object.keys(metadata).some(name => !["id", "family", "version", "sex", "calibration"].includes(name))) fail("Unsupported matrix profile metadata.");
+      const rules = [];
+      for (const child of Array.from(element.children)) {
+        if (child.tagName !== "Rule" || child.children.length) fail("Unsupported matrix rule.");
+        const raw = attrs(child), fn = Object.hasOwn(raw, "function") ? raw.function : "linear", allowed = new Set(["source", "target", "gain", "cap", "function"]);
+        if (fn === "power") allowed.add("exponent"); if (fn === "constant") allowed.add("value");
+        if (Object.keys(raw).some(name => !allowed.has(name)) || ["source", "target", "gain", "cap"].some(name => !Object.hasOwn(raw, name))) fail("Unsupported matrix rule attributes.");
+        const rule = { source: raw.source, target: raw.target, gain: number(raw.gain), cap: number(raw.cap), function: fn };
+        if (fn === "power") {
+          if (typeof raw.exponent !== "string" || !/^[0-9]+$/.test(raw.exponent)) fail("Invalid power exponent.");
+          rule.exponent = Number(raw.exponent);
+        }
+        if (fn === "constant") rule.value = number(raw.value);
+        rules.push(rule);
+      }
+      const profile = core.validateMatrix({ ...metadata, rules });
+      if (ids.has(profile.id)) fail("Duplicate matrix profile ID."); ids.add(profile.id); profiles.push(profile);
+    }
+    if (!profiles.length) fail("Matrix XML contains no profiles.");
+    for (const [sex, id] of Object.entries(defaults || {})) {
+      if (!profiles.some(profile => profile.id === id && profile.sex === sex)) fail("Matrix default must select a matching profile.");
+    }
+    const matches = expectedProfile ? profiles.filter(profile => ["id", "family", "version", "sex"].every(name => profile[name] === expectedProfile[name])) : profiles;
+    if (matches.length !== 1) fail("Select the matching human family before importing this matrix XML.");
+    return matches[0];
+  }
+  function parseMatrix(text, expectedProfile, Parser = global.DOMParser) {
+    return typeof text === "string" && text.trimStart().startsWith("<") ?
+      parseMatrixXML(text, expectedProfile, Parser) : parseMatrixJSON(text, expectedProfile);
+  }
   function parseWolfSnapshot(text, profile) {
     const parsed = JSON.parse(text);
     if (!object(parsed) || parsed.schemaVersion !== 1 || parsed.kind !== "claw-wolf-coefficient-snapshot" ||
         parsed.profileId !== profile.id || !object(parsed.wolfValues)) fail("Expected a wolf coefficient snapshot for this exact human family.");
-    const allowed = new Set(Object.keys(core.evaluateMatrix(profile, {}).values)), values = Object.create(null);
+    core.validateMorphNames(Object.keys(parsed.wolfValues));
+    const allowed = new Map(Object.keys(core.evaluateMatrix(profile, {}).values).map(name => [core.providerIdentity(name), name])), values = Object.create(null);
     for (const [name, value] of Object.entries(parsed.wolfValues)) {
-      if (!allowed.has(name)) fail("Snapshot contains an unsupported wolf body target: " + name);
-      values[name] = finite(value);
+      const target = allowed.get(core.providerIdentity(name));
+      if (!target) fail("Snapshot contains an unsupported wolf target: " + name);
+      values[target] = finite(value);
     }
     return values;
   }
   function compareWolf(calculated, reference) {
-    const rows = [], names = [...new Set([...Object.keys(calculated), ...Object.keys(reference)])].sort();
+    core.validateMorphNames(Object.keys(calculated)); core.validateMorphNames(Object.keys(reference));
+    const index = values => new Map(Object.entries(values).map(([name, value]) => [core.providerIdentity(name), { name, value }]));
+    const current = index(calculated), wanted = index(reference);
+    const rows = [], names = [...new Set([...current.keys(), ...wanted.keys()])].sort();
     let squareSum = 0, maximum = 0;
-    for (const target of names) {
-      const value = Object.hasOwn(calculated, target) ? finite(calculated[target]) : 0;
-      const wanted = Object.hasOwn(reference, target) ? finite(reference[target]) : 0;
-      const difference = value - wanted;
-      rows.push({ target, value, reference: wanted, difference }); squareSum += difference * difference;
+    for (const identity of names) {
+      const target = (current.get(identity) || wanted.get(identity)).name;
+      const value = current.has(identity) ? finite(current.get(identity).value) : 0;
+      const referenceValue = wanted.has(identity) ? finite(wanted.get(identity).value) : 0;
+      const difference = value - referenceValue;
+      rows.push({ target, value, reference: referenceValue, difference }); squareSum += difference * difference;
       maximum = Math.max(maximum, Math.abs(difference));
     }
     return { rows, maximum, rms: rows.length ? Math.sqrt(squareSum / rows.length) : 0 };
   }
-  const api = Object.freeze({ fromRows, effective, parseJSON, parseXML, matrixJSON, parseMatrixJSON, parseWolfSnapshot, compareWolf });
+  const api = Object.freeze({ fromRows, effective, parseJSON, parseXML, matrixJSON, parseMatrixJSON, parseMatrixXML, parseMatrix, parseWolfSnapshot, compareWolf });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWInput = api;
 })(typeof window !== "undefined" ? window : globalThis);

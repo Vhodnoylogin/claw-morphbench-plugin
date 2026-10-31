@@ -67,17 +67,20 @@ test("neutral, explicit zero and negative-source clipping retain zero targets", 
   assert.equal(core.evaluate(catalog, male, { Lean: 1 }).values[belly], 0);
 });
 
-test("native neutral baseline clears body names absent from a profile's rules", async () => {
+test("sparse preview leaves unwritten morphs alone and clears explicitly acknowledged prior targets", async () => {
   const result = core.evaluate(catalog, male, {});
   const neck = result.rows.find(row => row.target === "CLAWTorsoNeckGirth");
-  assert.equal(neck.value, 0);
-  assert.equal(neck.contributions.length, 0);
-  assert.equal(result.values.CLAWTorsoBackWide, 0);
+  assert.equal(neck, undefined);
+  assert.equal(Object.hasOwn(result.values, "CLAWTorsoNeckGirth"), false);
   assert.equal(Object.hasOwn(result.values, "CLAWTorsoBreastSize"), false);
   const mock = host(male);
   mock.values.CLAWTorsoNeckGirth = .9;
   mock.values.CLAWTorsoBackWide = .7;
   await core.writeLinked(mock.sdk, catalog, male, { PecsSize: .5 }, false, []);
+  assert.equal(mock.values.CLAWTorsoNeckGirth, .9);
+  assert.equal(mock.values.CLAWTorsoBackWide, .7);
+  mock.names.push("CLAWTorsoNeckGirth", "CLAWTorsoBackWide");
+  await core.writeLinked(mock.sdk, catalog, male, {}, false, ["CLAWTorsoNeckGirth", "CLAWTorsoBackWide"]);
   assert.equal(mock.values.CLAWTorsoNeckGirth, 0);
   assert.equal(mock.values.CLAWTorsoBackWide, 0);
   assert.equal(mock.values.CLAWHeadEarSize, .73);
@@ -92,7 +95,7 @@ test("input permits finite extrapolation/negative values and reports unmapped ag
 test("input rejects NaN, infinity, float overflow, nonnumeric, unsafe and malformed maps", () => {
   for (const input of [null, [], 1, "{}", { BellyPot: NaN }, { BellyPot: Infinity },
     { BellyPot: -Infinity }, { BellyPot: 1e39 }, { BellyPot: "1" }, { BellyPot: true },
-    { "bad\nname": .2 }, { " BellyPot": .2 }, { ["é".repeat(81)]: 0 }, { CLAWTorsoGirth: .1 },
+    { "bad\nname": .2 }, { " BellyPot": .2 }, { ["é".repeat(81)]: 0 },
     JSON.parse('{"__proto__":0}'), { constructor: 0 }, { prototype: 0 }]) {
     assert.throws(() => core.validateHuman(input));
   }
@@ -104,7 +107,7 @@ test("unknown or unsafe profile and malformed mappings reject instead of falling
     assert.throws(() => core.evaluate(catalog, id, {}));
   }
   const invalid = clone(catalog);
-  invalid.profiles.find(profile => profile.id === male).rules[0].target = "CLAWHeadEarSize";
+  invalid.profiles.find(profile => profile.id === male).rules[0].target = " unsafe";
   assert.throws(() => core.evaluate(invalid, male, {}));
   const duplicate = clone(catalog);
   duplicate.profiles[0].rules.push(duplicate.profiles[0].rules[0]);
@@ -126,7 +129,7 @@ test("apply validates the loaded model/morphs then makes one merge batch, preser
 test("one missing model target rejects the complete apply and reset without writes", async () => {
   for (const reset of [false, true]) {
     const mock = host(male, belly);
-    await assert.rejects(core.writeLinked(mock.sdk, catalog, male, { BodyMass: 1 }, reset, []), /missing linked body targets/);
+    await assert.rejects(core.writeLinked(mock.sdk, catalog, male, { BodyMass: 1 }, reset, []), /missing linked targets/);
     assert.deepEqual(mock.calls.map(call => call.method), ["scene.get", "morphs.get"]);
     assert.equal(mock.values[chest], undefined);
   }
@@ -149,7 +152,7 @@ test("reset writes only linked body zeros, including a previously written female
   assert.equal(mock.values.CLAWTorsoBreastSize, 0);
   assert.equal(mock.values.CLAWHeadEarSize, .73);
   assert.equal(mock.values.CLAWTailLength, .4);
-  await assert.rejects(core.writeLinked(mock.sdk, catalog, male, {}, true, ["CLAWHeadEarSize"]), /Invalid previously/);
+  await assert.rejects(core.writeLinked(mock.sdk, catalog, male, {}, true, ["__proto__"]), /Invalid previously/);
 });
 
 test("changing family clears formerly written targets and host failures propagate", async () => {

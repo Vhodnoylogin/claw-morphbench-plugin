@@ -17,7 +17,7 @@ test("diagnostic transformation uses the exact marshalled float32 input", () => 
   assert.equal(result.details[0].transformed,Math.fround(.1));
   assert.equal(result.details[0].contribution,result.rawSums[0]);
 });
-test("full native game configuration preserves other families and selected defaults", () => {
+test("native game configuration contains only the selected male and female profiles", () => {
   const native = process.argv[3]; if (!native) throw new Error("Pass the built native tool for an actual native roundtrip");
   const dir = fs.mkdtempSync(path.join(process.argv[4] || os.tmpdir(),"claw-config-"));
   for (const family of ["CBBE","3BA"]) {
@@ -25,10 +25,13 @@ test("full native game configuration preserves other families and selected defau
     const families = spawnSync(native,["families",file],{encoding:"utf8"});assert.equal(families.status,0,families.stderr);
     const parsed = JSON.parse(families.stdout);assert.equal(parsed.defaults.male,matrix.id);
     assert.equal(parsed.defaults.female,catalog.profiles.find(p=>p.family === family).id);
-    for (const profile of catalog.profiles) {
+    assert.equal(parsed.profiles.length,2);
+    for (const profile of catalog.profiles.filter(p=>p.family === "HIMBO" || p.family === family)) {
       const result = spawnSync(native,["matrix",file,profile.id],{input:"",encoding:"utf8"});assert.equal(result.status,0,result.stderr);
       const observed=JSON.parse(result.stdout), expected=core.evaluateMatrix(profile.family === "HIMBO" ? matrix:profile,{}).values;
       for (const [name,value] of Object.entries(expected)) assert.equal(Math.fround(observed[name]),value,name);
     }
+    const omitted=catalog.profiles.find(p=>p.family !== "HIMBO" && p.family !== family);
+    assert.notEqual(spawnSync(native,["matrix",file,omitted.id],{encoding:"utf8"}).status,0);
   }
 });

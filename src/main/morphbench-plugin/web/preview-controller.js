@@ -21,6 +21,7 @@
         Object.entries(value.values).some(([name, number]) => !value.names.includes(name) || typeof number !== "number" || !Number.isFinite(number))) {
       throw failure("invalidResponse", "The host returned an invalid scoped morph snapshot.");
     }
+    core.validateMorphNames(value.names);
     return value;
   }
   function readback(value, expectedNames, values) {
@@ -135,10 +136,14 @@
       }
       return copy(result);
     }
-    open(profileId, humanName, wolfName) {
-      let profile;
+    open(profileId, humanName, wolfName, matrix = null) {
+      let profile, selectedMatrix;
       try {
         profile = core.getProfile(this.catalog, profileId);
+        selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
+        if (selectedMatrix && ["id", "sex", "family", "version"].some(name => selectedMatrix[name] !== profile[name])) {
+          throw failure("invalidMatrix", "Matrix belongs to a different selected human family.");
+        }
         if ([humanName, wolfName].some(name => typeof name !== "string" || !name)) throw failure("invalidModel", "Select both catalogue names explicitly.");
       } catch (error) { return Promise.reject(error); }
       const epoch = ++this._epoch; this._pair = null; this._state.invalidate();
@@ -170,7 +175,7 @@
           }
           const bindings = { human: binding(result.human.preview, profile.sex), wolf: binding(result.wolf.preview, profile.sex) };
           this._state.bind(profileId, bindings);
-          this._state.arm({ human: { binding: bindings.human, names: result.human.names }, wolf: { binding: bindings.wolf, names: result.wolf.names } });
+          this._state.arm({ human: { binding: bindings.human, names: result.human.names }, wolf: { binding: bindings.wolf, names: result.wolf.names } }, selectedMatrix);
           const linked = await this._request("previews.link", {
             previews: [result.human.preview, result.wolf.preview], properties: ["orientation"]
           }, epoch);
@@ -232,8 +237,16 @@
         const oldProfile = core.getProfile(this.catalog, pair.profileId);
         if (profile.sex !== oldProfile.sex) throw failure("reopenRequired", "Changing resource sex requires reopening the two models.");
         if (profileId === pair.profileId) return this.pair;
+        // A generic target set can differ between same-sex families. Validate
+        // the next binding before changing authority or clearing acknowledged
+        // outputs, so a refused family change leaves the current pair usable.
+        const bindings = { human: binding(pair.human.preview, profile.sex), wolf: binding(pair.wolf.preview, profile.sex) };
+        const snapshots = { human: { binding: bindings.human, names: pair.human.names }, wolf: { binding: bindings.wolf, names: pair.wolf.names } };
+        const candidate = new PairState(this.catalog);
+        candidate.bind(profileId, bindings); candidate.arm(snapshots);
         const operation = this._state.changeProfile(profileId); await this._zero(operation, pair, epoch);
-        this._state.arm({ human: { binding: operation.bindings.human, names: pair.human.names }, wolf: { binding: operation.bindings.wolf, names: pair.wolf.names } });
+        try { this._state.arm(snapshots); }
+        catch (error) { await this._discard(pair, error); throw error; }
         this._pair = frozen({ ...pair, profileId }); this._notify("profile"); return this.pair;
       });
     }

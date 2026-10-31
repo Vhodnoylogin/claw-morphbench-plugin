@@ -1,5 +1,10 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
+This development branch builds **0.4.0-dev**, the generic sparse-matrix candidate.
+Published 0.3.0 remains on `main` and on its release page. This candidate adds
+model-validated custom targets, near-zero edge omission and selected-family XML;
+it does not introduce new body, head, colour or physics deformations.
+
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
 preview panels. One full human morph vector controls the human preview and the
 editable many-to-many CLAW conversion. Wolf coefficients are derived and read-only;
@@ -17,9 +22,9 @@ insufficient. There is no separate JavaScript formula fallback: every calculated
 coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
 
-Actual CLAW browser checks on31October opened male/female pairs, applied real
-thin/muscular vectors, rotated both directions, downloaded an18837-byte matrix,
-and read/exported every current/rest/delta position (14597 human and99909 wolf
+Recorded published 0.3 browser checks on 31 October opened male/female pairs, applied real
+thin/muscular vectors, rotated both directions, downloaded an 18,837-byte matrix,
+and read/exported every current/rest/delta position (14,597 human and 99,909 wolf
 vertices in the male check). These are untextured fixed-NIF observations, not
 game or artistic acceptance. The earlier filechooser timeout remains a browser
 automation limitation; a text-paste import is provided without a native picker.
@@ -29,7 +34,8 @@ accepted that XML and matched all 28 male preview targets with no human input.
 Changing the human from thin to muscular preserved the wolf's entire 99,909-vertex
 model exactly, including current/base/delta arrays and actual coefficients.
 Both complete approximately 16.2 MB geometry snapshots were downloaded through
-the parent service while the plugin displayed only a 32 KiB text page.
+the parent service while the plugin displayed only a 32 KiB text page. Those
+observations do not establish browser or game acceptance of the new sparse candidate.
 
 This tool installs or edits no game, MO2 profile, Distribution DLL, human preset,
 texture or skeleton. It imports no Morphbench backend, private renderer or DOM.
@@ -40,10 +46,10 @@ manifest filename `addon.json` and its keys keep Morphbench's public names.
 
 This is the independent [CLAW Morphbench plugin repository](https://github.com/Vhodnoylogin/claw-morphbench-plugin).
 It contains this browser plugin, its tests and publication artwork. CLAW's game
-DLL, body authoring and runtime belong to [CLAW](https://github.com/Vhodnoylogin/claw).
+DLL, body authoring and runtime belong to [CLAW - The Beast Within](https://github.com/Vhodnoylogin/claw).
 
-`dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml at
-CLAW commit `53e8f3872533f193483a4ee683d3bece1fe3eafa`, with per-file SHA256.
+`dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml to
+one committed CLAW feature revision, with per-file SHA256.
 They remain external build dependencies; there is no copied C++ evaluator or
 alternative conversion formula in this repository. The builder accepts
 `--claw-source-dir` for exact matching local files, or downloads the three pinned
@@ -60,7 +66,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001` and uses version `0.3.0`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
@@ -68,9 +74,9 @@ Production source is under `src/main/morphbench-plugin`, tests under
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
    Review the human controls and the read-only wolf calculation.
 4. **Apply to both previews** writes the human vector to the human model and
-   its mapped body outputs to the wolf. The optional **Apply human slider edits
+   its mapped outputs to the wolf. The optional **Apply human slider edits
    live** switch enables subsequent human slider edits; it starts unchecked.
-5. **Zero owned wolf outputs** preserves the human vector, ears/tail and unrelated
+5. **Zero owned wolf outputs** preserves the human vector and unowned
    wolf controls. **Close comparison pair** disposes this plugin's two previews.
 
 ## Wolf presets are coefficient and function matrices
@@ -79,28 +85,43 @@ Open **Wolf preset — coefficient and function matrix** to edit ordered sparse
 human-source/wolf-target edges. Each edge has a gain and a function. One cap is
 shared by every edge to the same target; changing a cap updates all those edges.
 Add source or constant edges, remove them, and change their accumulation order.
-Duplicate source/target pairs, unknown targets, invalid parameters and nonfinite
-numbers are rejected without replacing the last valid matrix. An absent edge
-contributes zero. Matrix edits turn off live apply and calculate locally until
+Morph names use printable ASCII identifiers and preserve their authored spelling.
+SKEE provider identity folds ASCII A–Z to a–z: case-only source/target aliases
+and folded source/output collisions are rejected. Sources repeated with the same
+spelling across different edges remain valid. Target names come from the loaded wolf model;
+there is no body-part or sex-specific name whitelist. With a pair open, edits and
+imports reject missing target names without replacing the last valid matrix.
+The controller validates both model domains again before writes.
+An absent edge contributes zero. After float32 normalization, gains with
+`abs(gain) <= 1e-6F` are omitted before duplicate/cap/capture checks. `linear` is
+the default function and is omitted from serialized presets. Invalid structural
+fields still fail on inactive edges. Active duplicates, inconsistent target caps,
+source/target name intersections and nonfinite numbers are rejected.
+An empty matrix is valid; applying it clears only previously acknowledged outputs.
+Matrix edits turn off live apply and calculate locally until
 the explicit **Apply to both previews** action.
 
 The function set is `linear`, `positive`, `negative`, `smoothstep`, `power`
 (integer exponent 1..8, preserving input sign) and `constant` (empty source with a
 finite value). Exact arithmetic is defined by the shared evaluator's
-[matrix contract](https://github.com/Vhodnoylogin/claw/blob/53e8f3872533f193483a4ee683d3bece1fe3eafa/docs/matrix-contract.md). Every target's contribution
+[sparse matrix contract](src/main/morphbench-plugin/docs/sparse-matrices.md). Every target's contribution
 details show original input, transformed input, gain and contribution.
 
 **Export wolf preset JSON** preserves the complete matrix: profile ID, resource
 family and version, sex, calibration, ordered edges, gains, caps, functions and
 their parameters. The file envelope is
-`{schemaVersion:1,kind:"claw-wolf-matrix",profile:{...}}`. Select the matching
+`{schemaVersion:1,kind:"claw-wolf-matrix",profile:{...}}`. Import accepts this JSON
+or generated native `MorphLinkProfiles` XML, through a file or pasted text.
+XML keeps the native plain-ASCII/no-entity/no-declaration restriction; delimiter
+characters supported by JSON receive an XML export error. Select the matching
 human family before importing one. Import validates ID/family/version/sex before
 replacing the current matrix. Pasting the same JSON into the matrix import box
 avoids a native file picker. **Restore canonical matrix** discards local matrix
 edits; it does not apply any coefficients. **Export mapping XML** produces the
-complete native `MorphLinkProfiles` catalog: the edited matrix, the unchanged
-other families and explicit male/female defaults. Select the intended female
-family before exporting.
+native `MorphLinkProfiles` configuration with exactly one HIMBO male profile and
+one selected CBBE or 3BA female profile, plus explicit defaults. Other families are
+omitted. Select the edited female family before exporting so its edits cannot
+be silently discarded. Standalone XML export can contain one profile.
 
 The numeric comparison shows edited-matrix output against the canonical matrix
 at identical human inputs. An optional diagnostic coefficient snapshot can replace
@@ -192,11 +213,11 @@ coefficient endpoints therefore produce the same coefficients at every weight.
 ## Arithmetic and lifecycle
 
 The `core.js` public evaluator validates and marshals inputs. It contains no
-conversion formulas. `distribution/shared/MatrixKernel.cpp` is compiled into the
+conversion formulas. The pinned `src/main/cpp/shared/MatrixKernel.cpp` is compiled into the
 game DLL and separately into WebAssembly; `matrix-kernel.template.js` only
-marshals its28-byte rule ABI and reads results. The embedded WASM has no imports,
+marshals its 28-byte rule ABI and reads results. The embedded WASM has no imports,
 engine access, allocator or network calls. Composition uses float32 inputs/gains/caps,
-binary64 function evaluation and accumulation in rule order, then
+binary64 function evaluation and accumulation in surviving rule order, then
 `float32(clamp(sum,0,1)*cap)`. Cap multiplication follows clamping;
 NPC weight is absent. Negative target sums reach neutral. Opposed deformations
 use explicit lean targets in compatible wolf resources and suitable source
@@ -218,7 +239,7 @@ Model loads, frame lifetime and renderer disposal remain the host's contract.
 
 ## Build and verify
 
-From this repository with Python 3.12+, Node.js22+ and clang with wasm32/wasm-ld support:
+From this repository with Python 3.12+, Node.js 22+ and clang with wasm32/wasm-ld support:
 
 ```powershell
 python build.py --output-dir target/plugin --wasm-compiler '<external-clang.exe>'
@@ -226,14 +247,16 @@ python build.py --output-dir target/plugin --wasm-compiler '<external-clang.exe>
 python -m unittest discover -s src/test/morphbench-plugin -p 'test_*.py'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/core.test.cjs './target/plugin/catalog.json'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/pair-state.test.cjs './target/plugin/catalog.json'
-node src/test/morphbench-plugin/input.test.cjs
-node src/test/morphbench-plugin/preview-controller.test.cjs
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/input.test.cjs
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/preview-controller.test.cjs
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sdk-integration.cjs './target/plugin/catalog.json' '<host>/web/addon-sdk.js' '<external-real-pair-inputs>'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/matrix.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>' '<external-real-pair-inputs>/fixtures-full-preset-reconstruction.json'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sparse.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
 ```
 
-The builder reads the hash-pinned external `distribution/profiles/MorphLinks.xml`, validates all
-three resource families and preserves XML order. It emits ten local browser
+The builder reads the hash-pinned external `src/main/resources/profiles/MorphLinks.xml`,
+validates supported-family subsets and defaults, and preserves surviving XML order.
+The bundled canonical catalog still offers all three current families. It emits ten local browser
 assets in a deterministic ZIP, with an external catalog and SHA-256 build report.
 The SDK is loaded from the host and is never copied into the package. The host's
 CSP blocks fetch/XHR, so the mapping is a classic local JS asset and imports use

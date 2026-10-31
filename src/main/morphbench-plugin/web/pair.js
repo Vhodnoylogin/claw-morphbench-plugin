@@ -31,7 +31,7 @@
         snapshot.names.some(name => typeof name !== "string" || !name) || new Set(snapshot.names).size !== snapshot.names.length) {
       fail("Model names must belong to the exact bound resource revision.");
     }
-    return new Set(snapshot.names);
+    return core.validateMorphNames(snapshot.names);
   }
 
   class PairState {
@@ -58,18 +58,21 @@
         (!requireEnabled || this.enabled) && plain(snapshot.bindings) && this.bindings !== null &&
         roles.every(role => sameBinding(snapshot.bindings[role], this.bindings[role]));
     }
-    arm(snapshots) {
+    arm(snapshots, matrix = null) {
       if (!this.bindings) fail("Bind both resources first.");
       if (this.pendingOperation) fail("Resolve the pending preview commit before rearming the pair.");
-      const profile = core.getProfile(this.catalog, this.profileId);
+      const canonical = core.getProfile(this.catalog, this.profileId);
+      const profile = matrix ? core.validateMatrix(matrix) : canonical;
+      if (["id", "sex", "family", "version"].some(name => profile[name] !== canonical[name])) fail("Matrix belongs to a different bound human family.");
       if (roles.some(role => this.bindings[role].sex !== profile.sex)) fail("Rebind resources for the selected family sex.");
       const available = {};
       for (const role of roles) available[role] = names(snapshots[role], this.bindings[role]);
+      const humanIdentities = new Set(Array.from(available.human, core.providerIdentity));
       if (profile.rules.some(rule => rule.function !== "constant") &&
-          !profile.rules.some(rule => rule.function !== "constant" && available.human.has(rule.source))) fail("Human model has no configured source morphs for the declared family.");
-      const targets = Object.keys(core.evaluate(this.catalog, this.profileId, {}).values);
+          !profile.rules.some(rule => rule.function !== "constant" && humanIdentities.has(core.providerIdentity(rule.source)))) fail("Human model has no configured source morphs for the declared family.");
+      const targets = Object.keys(core.evaluateMatrix(profile, {}).values);
       const missing = targets.filter(name => !available.wolf.has(name));
-      if (missing.length) fail("Wolf model is missing linked body targets: " + missing.join(", "));
+      if (missing.length) fail("Wolf model is missing linked targets: " + missing.join(", "));
       this.epoch += 1; this.available = available; this.enabled = true;
       return this.snapshot();
     }
@@ -83,8 +86,11 @@
       if (matrix && ["id", "sex", "family", "version"].some(name => matrix[name] !== core.getProfile(this.catalog, this.profileId)[name])) fail("Matrix belongs to a different bound human family.");
       const result = matrix ? core.evaluateMatrix(matrix, human) : core.evaluate(this.catalog, this.profileId, human);
       const inputs = Object.create(null), outputs = Object.assign(Object.create(null), result.values);
+      const loadedSources = new Map(Array.from(this.available.human, name => [core.providerIdentity(name), name]));
+      const humanValuesByIdentity = new Map(Object.entries(human).map(([name, value]) => [core.providerIdentity(name), value]));
       for (const rule of result.profile.rules) {
-        if (rule.source && this.available.human.has(rule.source)) inputs[rule.source] = human[rule.source] || 0;
+        const loaded = rule.source && loadedSources.get(core.providerIdentity(rule.source));
+        if (loaded) inputs[loaded] = humanValuesByIdentity.get(core.providerIdentity(rule.source)) ?? 0;
       }
       for (const [name, value] of Object.entries(human)) {
         if (!this.available.human.has(name)) fail("Human model is missing input morph: " + name);

@@ -25,7 +25,7 @@ class BuildTests(unittest.TestCase):
         mutations = [
             self.source.replace(b'family="HIMBO"', b'family="Unknown"', 1),
             self.source.replace(b'sex="male"', b'sex="female"', 1),
-            self.source.replace(b'target="CLAWArmGirth"', b'target="CLAWHeadEarSize"', 1),
+            self.source.replace(b'target="CLAWArmGirth"', b'target=" unsafe"', 1),
             self.source.replace(b'id="CLAW.CBBE.2.0.3.Geometry1"', b'id="CLAW.3BA.2.48.Geometry1"', 1),
         ]
         for data in mutations:
@@ -90,6 +90,63 @@ class BuildTests(unittest.TestCase):
             data = self.source.replace(b'<Rule source="Arms"', b'<Rule ' + attributes + b' source="Arms"', 1)
             with self.subTest(attributes=attributes), self.assertRaises(ValueError):
                 builder.catalog_from_bytes(data)
+
+    def sparse(self, rules, defaults=""):
+        return ('<MorphLinkProfiles schemaVersion="1">' + defaults +
+                '<Profile id="custom.HIMBO" family="HIMBO" version="1" sex="male" calibration="test">' +
+                rules + '</Profile></MorphLinkProfiles>').encode()
+
+    def test_generic_targets_and_sources_preserve_case_and_default_linear(self):
+        data = self.sparse('<Rule source="CLAWHumanCustom" target="CustomTarget" gain="1" cap="1" />')
+        result = builder.catalog_from_bytes(data)
+        self.assertEqual(result["profiles"][0]["rules"], [{"source": "CLAWHumanCustom", "target": "CustomTarget", "gain": 1, "cap": 1}])
+        self.assertEqual(result["gainEpsilon"], builder.float32("1e-6"))
+        case = self.sparse('<Rule source="a" target="B" gain="1" cap="1" />')
+        self.assertEqual(builder.catalog_from_bytes(case)["profiles"][0]["rules"][0]["target"], "B")
+
+    def test_inactive_edges_are_structurally_validated_then_omitted_before_conflicts(self):
+        data = self.sparse('<Rule source="Human" target="Custom" gain="1" cap="1" />'
+                           '<Rule source="Human" target="Custom" gain="1e-6" cap="0.5" />'
+                           '<Rule source="Custom" target="Other" gain="-1e-6" cap="1" />')
+        self.assertEqual(len(builder.catalog_from_bytes(data)["profiles"][0]["rules"]), 1)
+        for invalid in ('source=" bad" target="X" gain="0" cap="1"',
+                        'source="Human" target="X" gain="0" cap="0"',
+                        'source="Human" target="X" gain="0" cap="1" function="power" exponent="9"'):
+            with self.subTest(invalid=invalid), self.assertRaises(ValueError):
+                builder.catalog_from_bytes(self.sparse('<Rule ' + invalid + ' />'))
+        above = builder.struct.unpack('<f', builder.struct.pack('<I', builder.struct.unpack('<I', builder.struct.pack('<f', builder.GAIN_EPSILON))[0] + 1))[0]
+        first = builder.catalog_from_bytes(self.sparse(f'<Rule source="Human" target="Custom" gain="{above}" cap="1" />'))
+        self.assertEqual(len(first["profiles"][0]["rules"]), 1)
+        empty = builder.catalog_from_bytes(self.sparse('<Rule source="Human" target="Custom" gain="-0" cap="1" />'))
+        self.assertEqual(empty["profiles"][0]["rules"], [])
+
+    def test_empty_subset_defaults_and_active_collision_limits(self):
+        empty = builder.catalog_from_bytes(self.sparse('', '<Defaults male="custom.HIMBO" />'))
+        self.assertEqual(empty["defaults"], {"male": "custom.HIMBO"})
+        self.assertEqual(empty["profiles"][0]["rules"], [])
+        for defaults in ('<Defaults female="custom.HIMBO" />', '<Defaults male="missing" />'):
+            with self.subTest(defaults=defaults), self.assertRaises(ValueError):
+                builder.catalog_from_bytes(self.sparse('', defaults))
+        collision = '<Rule source="A" target="B" gain="1" cap="1" /><Rule source="B" target="C" gain="1" cap="1" />'
+        with self.assertRaisesRegex(ValueError, 'overlap'):
+            builder.catalog_from_bytes(self.sparse(collision))
+        rows = [f'<Rule source="Human{i}" target="Target{i}" gain="1" cap="1" />' for i in range(65)]
+        self.assertEqual(len(builder.catalog_from_bytes(self.sparse(''.join(rows[:64])))["profiles"][0]["rules"]), 64)
+        with self.assertRaisesRegex(ValueError, '64 active'):
+            builder.catalog_from_bytes(self.sparse(''.join(rows)))
+        with self.assertRaisesRegex(ValueError, 'raw rule count'):
+            builder.catalog_from_bytes(self.sparse('<Rule source="A" target="B" gain="0" cap="1" />' * 129))
+
+    def test_provider_case_aliases_and_non_ascii_names_are_rejected_after_pruning(self):
+        for rules in (
+            '<Rule source="Human" target="human" gain="1" cap="1" />',
+            '<Rule source="Human" target="Target" gain="1" cap="1" /><Rule source="human" target="Other" gain="1" cap="1" />',
+            '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="Other" target="ear.size" gain="1" cap="1" />',
+            '<Rule source="Human" target="Targeté" gain="0" cap="1" />'):
+            with self.subTest(rules=rules), self.assertRaises(ValueError):
+                builder.catalog_from_bytes(self.sparse(rules))
+        rules = '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="human" target="ear.size" gain="0" cap="1" />'
+        self.assertEqual(len(builder.catalog_from_bytes(self.sparse(rules))["profiles"][0]["rules"]), 1)
 
 
 if __name__ == "__main__":

@@ -24,15 +24,10 @@ HERE = Path(__file__).resolve().parent
 REPOSITORY = HERE.parents[2]
 TARGET = REPOSITORY / "target"
 PIN = json.loads((REPOSITORY / "dependencies.json").read_text(encoding="utf-8"))["claw"]
-SOURCE_RELATIVE = "distribution/profiles/MorphLinks.xml"
-SOURCE = TARGET / "dependencies/claw" / PIN["commit"] / SOURCE_RELATIVE
-BODY_TARGETS = frozenset((
-    "CLAWArmGirth", "CLAWLegCalfGirth", "CLAWLegThighGirth",
-    "CLAWTorsoBackWide", "CLAWTorsoBellyRound", "CLAWTorsoBreastSize",
-    "CLAWTorsoChestSize", "CLAWTorsoFlankWidth", "CLAWTorsoGirth",
-    "CLAWTorsoNeckGirth", "CLAWTorsoShoulderGirth", "CLAWTorsoWaistNarrow",
-    "CLAWArmLean", "CLAWLegThighLean", "CLAWLegCalfLean", "CLAWTorsoLean",
-))
+SOURCE_RELATIVE = "src/main/resources/profiles/MorphLinks.xml"
+SHARED_RELATIVE = "src/main/cpp/shared"
+DEPENDENCY_ROOT = TARGET / "dependencies/claw" / PIN["commit"]
+SOURCE = DEPENDENCY_ROOT / SOURCE_RELATIVE
 ASSETS = ("addon.json", "index.html", "core.js", "pair.js", "input.js", "preview-controller.js", "main.js", "style.css")
 
 
@@ -40,7 +35,7 @@ def dependency_root(source_dir: Path | None = None) -> Path:
     """Use exact pinned local files or fetch their public immutable raw versions."""
     source_dir = source_dir or os.environ.get("CLAW_SOURCE_DIR")
     local = source_dir is not None
-    root = Path(source_dir).resolve() if local else SOURCE.parents[2]
+    root = Path(source_dir).resolve() if local else DEPENDENCY_ROOT
     if PIN["repository"] != "https://github.com/Vhodnoylogin/claw" or not re.fullmatch(r"[0-9a-f]{40}", PIN["commit"]):
         raise ValueError("Unsupported CLAW dependency pin")
     for relative, expected in PIN["files"].items():
@@ -69,18 +64,35 @@ def identifier(value: str) -> bool:
             and value not in {"__proto__", "prototype", "constructor"})
 
 
+def morph_identifier(value: str) -> bool:
+    return identifier(value) and all(32 <= ord(character) <= 126 for character in value)
+
+
+def provider_identity(value: str) -> str:
+    return value.translate(str.maketrans("ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"))
+
+
 def float32(value: str) -> float:
+    if not isinstance(value, str) or not re.fullmatch(r"-?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?", value):
+        raise ValueError("Expected native decimal coefficient syntax")
     number = float(value)
     if not math.isfinite(number):
         raise ValueError("Mapping numbers must be finite")
-    result = struct.unpack("<f", struct.pack("<f", number))[0]
+    try:
+        result = struct.unpack("<f", struct.pack("<f", number))[0]
+    except OverflowError as error:
+        raise ValueError("Mapping numbers must fit float32") from error
     if not math.isfinite(result):
         raise ValueError("Mapping numbers must fit float32")
     return result
 
 
+GAIN_EPSILON = float32("1e-6")
+
+
 def catalog_from_bytes(data: bytes) -> dict:
-    if len(data) > 1024 * 1024 or b"<!" in data:
+    if (len(data) > 1024 * 1024 or any(byte >= 127 or (byte < 32 and byte not in (9, 10, 13)) for byte in data)
+            or b"<!" in data or b"<?" in data or b"&" in data):
         raise ValueError("Oversize XML or unsupported declarations/entities")
     root = ET.fromstring(data.decode("utf-8-sig"))
     for element in root.iter():
@@ -88,8 +100,17 @@ def catalog_from_bytes(data: bytes) -> dict:
             raise ValueError("Substantive XML text is unsupported")
     if root.tag != "MorphLinkProfiles" or root.attrib != {"schemaVersion": "1"}:
         raise ValueError("Unsupported morph catalog schema")
-    profiles, ids, families = [], set(), set()
+    profiles, ids, families, defaults = [], set(), set(), None
     for child in root:
+        if child.tag == "Defaults":
+            if defaults is not None or not child.attrib or not set(child.attrib).issubset({"male", "female"}) or len(child):
+                raise ValueError("Invalid/duplicate profile defaults")
+            defaults = {sex: value for sex, value in child.attrib.items() if value}
+            if not defaults:
+                raise ValueError("Empty profile defaults")
+            if not all(identifier(value) for value in defaults.values()):
+                raise ValueError("Invalid profile default identifier")
+            continue
         if child.tag != "Profile" or set(child.attrib) != {"id", "family", "version", "sex", "calibration"}:
             raise ValueError("Unexpected profile element or metadata")
         metadata = dict(child.attrib)
@@ -100,7 +121,9 @@ def catalog_from_bytes(data: bytes) -> dict:
             raise ValueError("Invalid, duplicate or wrong-sex resource family")
         ids.add(profile_id)
         families.add(family)
-        rules, pairs, caps = [], set(), {}
+        rules, pairs, caps, source_names, target_names = [], set(), {}, {}, {}
+        if len(child) > 128:
+            raise ValueError("Invalid raw rule count")
         for rule in child:
             function = rule.attrib.get("function", "linear")
             expected = {"source", "target", "gain", "cap"}
@@ -115,17 +138,12 @@ def catalog_from_bytes(data: bytes) -> dict:
                 raise ValueError("Unexpected rule element or metadata")
             source, target = rule.attrib["source"], rule.attrib["target"]
             gain, cap = float32(rule.attrib["gain"]), float32(rule.attrib["cap"])
-            if ((source != "" if function == "constant" else (not identifier(source) or source.startswith("CLAW")))
+            if ((source != "" if function == "constant" else not morph_identifier(source))
                     or function not in {"linear", "positive", "negative", "smoothstep", "power", "constant"}
-                    or target not in BODY_TARGETS
-                    or (family == "HIMBO" and target == "CLAWTorsoBreastSize")
-                    or not 0 < cap <= 1 or (source, target) in pairs
-                    or (target in caps and caps[target] != cap)):
-                raise ValueError("Invalid/duplicate morph rule or inconsistent cap")
-            pairs.add((source, target))
-            caps[target] = cap
+                    or not morph_identifier(target) or not 0 < cap <= 1):
+                raise ValueError("Invalid morph rule")
             edge = {"source": source, "target": target, "gain": gain, "cap": cap}
-            if "function" in rule.attrib:
+            if function != "linear":
                 edge["function"] = function
             if function == "power":
                 if not re.fullmatch(r"[0-9]+", rule.attrib["exponent"]):
@@ -135,17 +153,36 @@ def catalog_from_bytes(data: bytes) -> dict:
                     raise ValueError("Power exponent must be in 1..8")
             if function == "constant":
                 edge["value"] = float32(rule.attrib["value"])
+            if abs(gain) <= GAIN_EPSILON:
+                continue
+            for names, name in ((source_names, source), (target_names, target)):
+                if not name:
+                    continue
+                identity = provider_identity(name)
+                if identity in names and names[identity] != name:
+                    raise ValueError("Ambiguous active provider case aliases")
+                names[identity] = name
+            if (source, target) in pairs or (target in caps and caps[target] != cap):
+                raise ValueError("Duplicate active morph rule or inconsistent cap")
+            pairs.add((source, target))
+            caps[target] = cap
             rules.append(edge)
-        if not 0 < len(rules) <= 128:
-            raise ValueError("Invalid rule count")
+        if len(caps) > 64:
+            raise ValueError("A sparse matrix supports at most 64 active targets")
+        if source_names.keys() & target_names.keys():
+            raise ValueError("Active source and target names must not overlap")
         metadata["rules"] = rules
         profiles.append(metadata)
-    if families != {"CBBE", "3BA", "HIMBO"}:
-        raise ValueError("Expected one current CBBE, 3BA and HIMBO profile")
+    if not profiles:
+        raise ValueError("Expected at least one profile")
+    for sex, profile_id in (defaults or {}).items():
+        if not any(profile["id"] == profile_id and profile["sex"] == sex for profile in profiles):
+            raise ValueError("Default must select an existing profile of the matching sex")
     return {"schemaVersion": 1,
             "source": {"repository": PIN["repository"], "commit": PIN["commit"], "path": SOURCE_RELATIVE,
                        "sha256": hashlib.sha256(data).hexdigest()},
-            "numericContract": "float32 inputs/gains/caps/constants; binary64 function evaluation and sum(gain*F(input)) in XML order; float32(clamp(sum,0,1)*cap); docs/matrix-contract.md",
+            "numericContract": "float32 inputs/gains/caps/constants; omit abs(gain)<=1e-6F; default linear; binary64 function evaluation and sum(gain*F(input)) in XML order; float32(clamp(sum,0,1)*cap)",
+            "gainEpsilon": GAIN_EPSILON, "defaults": defaults or {},
             "profiles": profiles}
 
 
@@ -154,14 +191,15 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
     compiler = compiler or os.environ.get("CLAW_WASM_COMPILER") or shutil.which("clang")
     if not compiler:
         raise ValueError("Provide --wasm-compiler or CLAW_WASM_COMPILER pointing to clang with wasm-ld support")
-    shared = dependency_root(claw_source_dir) / "distribution/shared"
+    shared = dependency_root(claw_source_dir) / SHARED_RELATIVE
     sources = {name: (shared / name).read_bytes() for name in ("MatrixKernel.h", "MatrixKernel.cpp")}
     digest = hashlib.sha256(b"".join(name.encode()+b"\0"+data for name, data in sources.items())).hexdigest()
     wasm = output_dir / "matrix-kernel.wasm"
     command = [str(compiler), "--target=wasm32", "-x", "c++", "-std=c++17", "-O2", "-nostdlib",
                "-fno-exceptions", "-fno-rtti", "-fno-builtin", "-ffp-contract=off", "-fno-fast-math",
                "-Wl,--no-entry", "-Wl,--export-memory", "-Wl,--export=__heap_base",
-               *["-Wl,--export="+name for name in ("claw_matrix_transform", "claw_matrix_contribution", "claw_matrix_clamp", "claw_matrix_evaluate")],
+               *["-Wl,--export="+name for name in ("claw_matrix_transform", "claw_matrix_contribution", "claw_matrix_clamp", "claw_matrix_evaluate",
+                                                    "claw_matrix_gain_active", "claw_matrix_gain_epsilon")],
                str(shared / "MatrixKernel.cpp"), "-o", str(wasm)]
     subprocess.run(command, check=True, capture_output=True, text=True)
     for name, data in sources.items():

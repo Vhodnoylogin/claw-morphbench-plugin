@@ -47,8 +47,8 @@
     <summary>Wolf preset — coefficient and function matrix</summary>
     <p class="muted">Each ordered edge contributes gain × function(human coefficient). A constant edge supplies a bias. Target sums clamp to [0,1], then multiply by the target cap. Sparse absent edges contribute zero.</p>
     <p id="matrix-status" class="muted"></p>
-    <label for="matrix-import">Import wolf matrix preset JSON</label><input id="matrix-import" type="file" accept=".json,application/json">
-    <details><summary>Paste wolf matrix preset JSON</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
+    <label for="matrix-import">Import wolf matrix preset JSON or XML</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
+    <details><summary>Paste wolf matrix preset JSON or XML</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
     <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option></select>
     <div class="actions"><button id="matrix-export" type="button">Export wolf preset JSON</button><button id="matrix-xml" type="button">Export game configuration XML</button><button id="matrix-reset" type="button">Restore canonical matrix</button></div>
     <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">

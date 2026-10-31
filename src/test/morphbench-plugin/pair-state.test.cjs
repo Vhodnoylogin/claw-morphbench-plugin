@@ -51,7 +51,7 @@ test("model names from another resource revision cannot arm a pair or permit a p
   assert.throws(() => state.arm(snapshots), /exact bound/);
   const other = fixture(); other.state.invalidate();
   other.snapshots.wolf.names = other.snapshots.wolf.names.filter(name => name !== "CLAWTorsoGirth");
-  assert.throws(() => other.state.arm(other.snapshots), /missing linked body targets/);
+  assert.throws(() => other.state.arm(other.snapshots), /missing linked targets/);
   assert.throws(() => fixture().state.plan({ UnavailableHumanMorph: 1 }), /missing input/);
   const wrongHuman = fixture(); wrongHuman.state.invalidate(); wrongHuman.snapshots.human.names = ["CLAWTorsoGirth"];
   assert.throws(() => wrongHuman.state.arm(wrongHuman.snapshots), /Human model has no configured source/);

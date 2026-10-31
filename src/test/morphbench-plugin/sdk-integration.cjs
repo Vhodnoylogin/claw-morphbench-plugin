@@ -20,7 +20,7 @@ class Element {
   async fire(name) { assert.equal(typeof this.events[name], "function"); return this.events[name](); }
 }
 function harness({ stable = false, missing = null, failWolfSet = false, geometry = false,
-  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false } = {}) {
+  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, wolfNamesOverride = null } = {}) {
   const nodes = new Map(), events = new Map(), calls = [], previews = new Map(); let serial = 0;
   const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family"]);
   const element = id => { if (!nodes.has(id)) nodes.set(id, new Element(selectIds.has(id) ? "select" : "div")); return nodes.get(id); };
@@ -33,7 +33,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
   const profile = catalog.profiles.find(item => item.family === "3BA");
   const humanNames = realRoot ? JSON.parse(fs.readFileSync(path.join(realRoot,"resource-name-audit.json"),"utf8"))[0].morphNames :
     [...new Set([...profile.rules.map(rule => rule.source), "Butt", "BigButt", "MuscleAbs", "HumanOther"])];
-  const wolfNames = Object.keys(core.evaluate(catalog, profile.id, {}).values).filter(name => name !== missing).concat(["CLAWHeadEarSize", "CLAWTailLength"]);
+  const wolfNames = wolfNamesOverride || Object.keys(core.evaluate(catalog, profile.id, {}).values).filter(name => name !== missing).concat(["CLAWHeadEarSize", "CLAWTailLength"]);
   const legacyValues = { LegacyMain: .33 };
   const geometryVertices = geometryVertexCount === 3 ? [1, 2, 3, -1, -2, -3, .5, .5, .5] :
     Array.from({ length: geometryVertexCount * 3 }, (_, index) => (index % 997) / 997 - .5);
@@ -150,7 +150,7 @@ test("slider provenance refreshes explicit signed and zero JSON values without r
 });
 test("missing wolf target refuses opening and disposes both created previews without morph writes", async () => {
   const bench = harness({ missing: "CLAWTorsoBellyRound" }); await open(bench);
-  assert.match(bench.element("status").textContent, /missing linked body targets/);
+  assert.match(bench.element("status").textContent, /missing linked targets/);
   assert.equal(bench.previews.size, 0); assert.equal(bench.calls.filter(call => call.method.endsWith(".set")).length, 0);
 });
 test("partial pair write failure closes both previews and displays readable failure", async () => {
@@ -222,7 +222,7 @@ test("structured edge editor changes gain/function/parameter, target caps and or
   await bench.element("matrix-export").fire("click"); matrix = JSON.parse(bench.element("export-text").value).profile;
   assert.equal(matrix.rules.at(-1).function, "constant"); assert.equal(matrix.rules.at(-1).source, "");
   await bench.element("matrix-reset").fire("click"); await bench.element("matrix-export").fire("click");
-  assert.deepEqual(JSON.parse(bench.element("export-text").value).profile, core.getProfile(catalog, bench.element("profile").value));
+  assert.deepEqual(JSON.parse(bench.element("export-text").value).profile, core.serializableMatrix(core.getProfile(catalog, bench.element("profile").value)));
 });
 test("diagnostic coefficient reference compares numerically without applying or replacing matrix preset", async () => {
   const bench = harness(); await settle(); bench.element("human").value = '{"Belly":0.5}';
@@ -251,7 +251,7 @@ test("small matrix exports remain complete on one page and host downloads retain
   const bench = harness({ hostExports: true }); await settle();
   await bench.element("matrix-export").fire("click");
   const json = bench.element("export-text").value;
-  assert.deepEqual(JSON.parse(json).profile, core.getProfile(catalog, bench.element("profile").value));
+  assert.deepEqual(JSON.parse(json).profile, core.serializableMatrix(core.getProfile(catalog, bench.element("profile").value)));
   assert.equal(bench.element("export-page").value, "1"); assert.equal(bench.element("export-page").max, "1");
   assert.equal(bench.element("export-previous").disabled, true); assert.equal(bench.element("export-next").disabled, true);
   assert.match(bench.element("export-page-status").textContent, /Page 1 of 1/);
@@ -265,6 +265,39 @@ test("small matrix exports remain complete on one page and host downloads retain
   await bench.element("export-download").fire("click");
   prepared = bench.calls.filter(call => call.method === "exports.prepare").at(-1).params;
   assert.equal(prepared.text, xml); assert.equal(prepared.format, "xml"); assert.equal(prepared.filename, "MorphLinks.xml");
+});
+
+test("loaded model validation accepts available generic targets and preserves the last matrix on missing targets", async () => {
+  const bench = harness(); await open(bench);
+  const profile = core.getProfile(catalog, bench.element("profile").value);
+  const imported = { ...profile, rules: [{ source: "", target: "CLAWHeadEarSize", gain: 1, cap: 1, function: "constant", value: .4 }] };
+  bench.element("matrix-paste").value = JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: imported });
+  await bench.element("matrix-paste-load").fire("click");
+  await bench.element("matrix-export").fire("click");
+  const accepted = bench.element("export-text").value;
+  assert.equal(JSON.parse(accepted).profile.rules[0].target, "CLAWHeadEarSize");
+  const writes = bench.calls.filter(call => call.method === "previews.morphs.set").length;
+  imported.rules[0].target = "Missing.Custom.Target";
+  bench.element("matrix-paste").value = JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: imported });
+  await bench.element("matrix-paste-load").fire("click");
+  assert.match(bench.element("status").textContent, /missing linked targets/);
+  await bench.element("matrix-export").fire("click");
+  assert.equal(bench.element("export-text").value, accepted);
+  assert.equal(bench.calls.filter(call => call.method === "previews.morphs.set").length, writes);
+});
+
+test("canonical restore cannot replace a usable custom matrix with unavailable loaded targets", async () => {
+  const bench = harness({ wolfNamesOverride: ["CLAWHeadEarSize", "CLAWTailLength"] }); await settle();
+  const profile = core.getProfile(catalog, bench.element("profile").value);
+  const imported = { ...profile, rules: [{ source: "", target: "CLAWHeadEarSize", gain: 1, cap: 1, function: "constant", value: .4 }] };
+  bench.element("matrix-paste").value = JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: imported });
+  await bench.element("matrix-paste-load").fire("click"); await open(bench);
+  await bench.element("matrix-export").fire("click"); const accepted = bench.element("export-text").value;
+  const writes = bench.calls.filter(call => call.method === "previews.morphs.set").length;
+  await bench.element("matrix-reset").fire("click"); assert.match(bench.element("status").textContent, /missing linked targets/);
+  await bench.element("matrix-export").fire("click"); assert.equal(bench.element("export-text").value, accepted);
+  assert.equal(bench.calls.filter(call => call.method === "previews.morphs.set").length, writes);
+  await bench.element("apply").fire("click"); assert.match(bench.element("status").textContent, /Applied/);
 });
 
 for (const hostExports of [true, false]) test("large geometry export pages retain every byte " +

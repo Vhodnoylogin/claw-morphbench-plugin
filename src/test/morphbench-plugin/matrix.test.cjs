@@ -55,6 +55,9 @@ if (process.argv[2] && process.argv[3] && process.argv[4]) {
     for (const [target, value] of Object.entries(expected)) {
       assert.equal(Math.fround(observed[target]), value, `${label} ${target}`); values++;
     }
+    for (const [target, value] of Object.entries(observed)) {
+      if (!Object.hasOwn(expected, target)) assert.equal(value, 0, `${label} unexpected nonzero native target ${target}`);
+    }
     cases++;
   };
   test("native C++ and JavaScript match float32 outputs for every function, extremes, ordered cancellation and real fixture matrices", () => {

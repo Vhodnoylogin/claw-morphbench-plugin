@@ -3,11 +3,6 @@
   "use strict";
 
   const unsafeNames = new Set(["__proto__", "prototype", "constructor"]);
-  const bodyTargets = new Set(["CLAWArmGirth", "CLAWLegCalfGirth", "CLAWLegThighGirth",
-    "CLAWTorsoBackWide", "CLAWTorsoBellyRound", "CLAWTorsoBreastSize", "CLAWTorsoChestSize",
-    "CLAWTorsoFlankWidth", "CLAWTorsoGirth", "CLAWTorsoNeckGirth",
-    "CLAWTorsoShoulderGirth", "CLAWTorsoWaistNarrow", "CLAWArmLean",
-    "CLAWLegThighLean", "CLAWLegCalfLean", "CLAWTorsoLean"]);
   const own = (object, key) => Object.prototype.hasOwnProperty.call(object, key);
 
   function fail(message) { throw new Error(message); }
@@ -24,14 +19,29 @@
     }
     return Math.fround(value);
   }
-  function linkedTarget(name) {
-    return bodyTargets.has(name);
+  function providerIdentity(name) { return name.replace(/[A-Z]/g, character => character.toLowerCase()); }
+  function morphIdentifier(name) { return identifier(name) && !/[^\x20-\x7e]/.test(name); }
+  function validateMorphNames(names) {
+    if (!Array.isArray(names)) fail("Morph names must be an array.");
+    const seen = new Map();
+    for (const name of names) {
+      if (!morphIdentifier(name)) fail("Morph names must use printable ASCII identifiers.");
+      const identity = providerIdentity(name);
+      if (seen.has(identity)) fail("Duplicate morph name or ambiguous provider case aliases: " + seen.get(identity) + " / " + name);
+      seen.set(identity, name);
+    }
+    return new Set(names);
+  }
+  function kernel() {
+    const value = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
+    if (!value || typeof value.gainActive !== "function") fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
+    return value;
   }
   function validateHuman(values) {
     if (!object(values)) fail("Human values must be a JSON object mapping names to numbers.");
+    validateMorphNames(Object.keys(values));
     const result = Object.create(null);
     for (const [name, value] of Object.entries(values)) {
-      if (!identifier(name) || name.startsWith("CLAW")) fail("Invalid human morph name: " + name);
       result[name] = finiteFloat(value, name);
     }
     return result;
@@ -42,13 +52,14 @@
   function validateMatrix(profile) {
     if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "HIMBO"].includes(profile.family) ||
         profile.sex !== (profile.family === "HIMBO" ? "male" : "female") ||
-        !Array.isArray(profile.rules) || !profile.rules.length || profile.rules.length > 128) {
+        Object.keys(profile).some(key => !["id", "family", "sex", "version", "calibration", "rules"].includes(key)) ||
+        !Array.isArray(profile.rules) || profile.rules.length > 128) {
       fail("Invalid CLAW profile metadata.");
     }
     for (const key of ["version", "calibration"]) {
       if (own(profile, key) && !identifier(profile[key])) fail("Invalid CLAW profile " + key);
     }
-    const pairs = new Set(), caps = new Map();
+    const pairs = new Set(), caps = new Map(), sourceNames = new Map(), targetNames = new Map();
     const normalized = { ...profile, rules: [] };
     for (const rule of profile.rules) {
       if (!object(rule)) fail("Invalid CLAW mapping rule.");
@@ -57,9 +68,7 @@
       if (fn === "power") allowed.add("exponent");
       if (fn === "constant") allowed.add("value");
       if (!functions.has(fn) || Object.keys(rule).some(key => !allowed.has(key)) ||
-          (fn === "constant" ? rule.source !== "" : (!identifier(rule.source) || rule.source.startsWith("CLAW"))) ||
-          !identifier(rule.target) || !linkedTarget(rule.target) ||
-          (profile.sex === "male" && rule.target === "CLAWTorsoBreastSize")) {
+          (fn === "constant" ? rule.source !== "" : !morphIdentifier(rule.source)) || !morphIdentifier(rule.target)) {
         fail("Invalid CLAW mapping rule or function parameters.");
       }
       const gain = finiteFloat(rule.gain, "Rule gain");
@@ -71,6 +80,13 @@
         edge.exponent = rule.exponent;
       }
       if (fn === "constant") edge.value = finiteFloat(rule.value, "Constant value");
+      if (!kernel().gainActive(gain)) continue;
+      for (const [names, name] of [[sourceNames, rule.source], [targetNames, rule.target]]) {
+        if (!name) continue;
+        const identity = providerIdentity(name);
+        if (names.has(identity) && names.get(identity) !== name) fail("Ambiguous active provider case aliases: " + names.get(identity) + " / " + name);
+        names.set(identity, name);
+      }
       const pair = JSON.stringify([rule.source, rule.target]);
       if (pairs.has(pair)) fail("Duplicate CLAW source/target rule.");
       pairs.add(pair);
@@ -78,7 +94,16 @@
       caps.set(rule.target, cap);
       normalized.rules.push(edge);
     }
+    if (caps.size > 64) fail("A sparse matrix supports at most 64 active targets.");
+    if (Array.from(sourceNames.keys()).some(name => targetNames.has(name))) fail("Active source and target names must not overlap by provider identity.");
     return normalized;
+  }
+
+  function serializableMatrix(matrix) {
+    const profile = validateMatrix(matrix);
+    return { ...profile, rules: profile.rules.map(rule => {
+      const edge = { ...rule }; if (edge.function === "linear") delete edge.function; return edge;
+    }) };
   }
 
   function getProfile(catalog, id) {
@@ -101,7 +126,8 @@
       '  <Profile id="' + ascii(profile.id) + '" family="' + profile.family + '" version="' + ascii(version) +
       '" sex="' + profile.sex + '" calibration="' + ascii(calibration) + '">'];
     for (const rule of profile.rules) {
-      let line = '    <Rule source="' + ascii(rule.source) + '" target="' + rule.target + '" gain="' + rule.gain + '" cap="' + rule.cap + '" function="' + rule.function + '"';
+      let line = '    <Rule source="' + ascii(rule.source) + '" target="' + ascii(rule.target) + '" gain="' + rule.gain + '" cap="' + rule.cap + '"';
+      if (rule.function !== "linear") line += ' function="' + rule.function + '"';
       if (rule.function === "power") line += ' exponent="' + rule.exponent + '"';
       if (rule.function === "constant") line += ' value="' + rule.value + '"';
       lines.push(line + ' />');
@@ -117,37 +143,36 @@
   function exportCatalog(catalog, matrix, femaleFamily) {
     const edited = validateMatrix(matrix);
     if (!["CBBE", "3BA"].includes(femaleFamily)) fail("Declare the installed female body family before exporting game configuration.");
-    const profiles = catalog.profiles.map(profile => profile.family === edited.family ? edited : validateMatrix(profile));
-    const male = profiles.filter(profile => profile.family === "HIMBO");
-    const female = profiles.filter(profile => profile.family === femaleFamily);
-    if (male.length !== 1 || female.length !== 1 || new Set(profiles.map(profile => profile.id)).size !== profiles.length) fail("Ambiguous game configuration families or identifiers.");
-    const body = profiles.map(profile => exportMatrix(profile).split("\n").slice(1,-2).join("\n")).join("\n");
+    if (edited.sex === "female" && edited.family !== femaleFamily) fail("Select the edited female family before exporting game configuration.");
+    const selected = ["HIMBO", femaleFamily].map(family => {
+      const matches = catalog.profiles.filter(profile => profile.family === family);
+      if (matches.length !== 1) fail("Ambiguous game configuration families or identifiers.");
+      return edited.family === family ? edited : validateMatrix(matches[0]);
+    });
+    const [male, female] = selected;
+    if (male.id === female.id) fail("Ambiguous game configuration identifiers.");
+    const body = selected.map(profile => exportMatrix(profile).split("\n").slice(1,-2).join("\n")).join("\n");
     // exportMatrix validates every identifier for the deliberately strict native XML format.
-    return '<MorphLinkProfiles schemaVersion="1">\n  <Defaults male="' + male[0].id + '" female="' + female[0].id + '" />\n' + body + '\n</MorphLinkProfiles>\n';
+    return '<MorphLinkProfiles schemaVersion="1">\n  <Defaults male="' + male.id + '" female="' + female.id + '" />\n' + body + '\n</MorphLinkProfiles>\n';
   }
 
   function evaluateMatrix(matrix, humanValues) {
     const profile = validateMatrix(matrix), human = validateHuman(humanValues);
+    const humanByIdentity = new Map(Object.entries(human).map(([name, value]) => [providerIdentity(name), value]));
     const targets = new Map(), mappedSources = new Set();
-    // Native linked composition starts neutral. Own only its linked body subset;
-    // leave ear/tail/head/paw/claw controls outside this addon's write scope.
-    for (const target of bodyTargets) {
-      if (profile.sex !== "male" || target !== "CLAWTorsoBreastSize") {
-        targets.set(target, { target: target, contributions: [], rawSum: 0, cap: 1 });
-      }
+    for (const rule of profile.rules) {
+      if (!targets.has(rule.target)) targets.set(rule.target, { target: rule.target, contributions: [], rawSum: 0, cap: rule.cap });
     }
-    const kernel = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
-    if (!kernel) fail("Shared CLAW WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
     const ordered = Array.from(targets.keys());
     const numericRules = profile.rules.map(rule => ({ ...rule,
       target: ordered.indexOf(rule.target),
-      input: rule.function === "constant" ? 0 : (own(human, rule.source) ? human[rule.source] : 0) }));
-    const numeric = kernel.evaluate(numericRules, ordered.length);
+      input: rule.function === "constant" ? 0 : (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
+    const numeric = kernel().evaluate(numericRules, ordered.length);
     profile.rules.forEach((rule, index) => {
       const row = targets.get(rule.target);
       row.cap = rule.cap;
       row.contributions.push({ ...rule, input: numericRules[index].input, ...numeric.details[index] });
-      if (rule.function !== "constant") mappedSources.add(rule.source);
+      if (rule.function !== "constant") mappedSources.add(providerIdentity(rule.source));
     });
     const values = Object.create(null);
     ordered.forEach((target, index) => {
@@ -157,7 +182,7 @@
     });
     const rows = Array.from(targets.values()).sort((a, b) => a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
     return { profile: profile, rows: rows, values: values,
-      unmapped: Object.keys(human).filter(name => !mappedSources.has(name)).sort() };
+      unmapped: Object.keys(human).filter(name => !mappedSources.has(providerIdentity(name))).sort() };
   }
 
   function validateModel(scene, morphs, targets) {
@@ -165,18 +190,17 @@
         typeof scene.names.nif !== "string" || !scene.names.nif) fail("Open a CLAW body model first.");
     if (!object(morphs) || !Array.isArray(morphs.names) ||
         morphs.names.some(name => typeof name !== "string")) fail("Invalid host morph list.");
-    const available = new Set(morphs.names);
+    const available = validateMorphNames(morphs.names);
     const missing = targets.filter(name => !available.has(name));
-    if (missing.length) fail("Model is missing linked body targets: " + missing.join(", "));
+    if (missing.length) fail("Model is missing linked targets: " + missing.join(", "));
     return scene.names.nif;
   }
 
   async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten) {
     const result = evaluate(catalog, profileId, human);
     const values = Object.assign(Object.create(null), result.values);
-    const allowed = bodyTargets;
     for (const target of previouslyWritten || []) {
-      if (!allowed.has(target) || !linkedTarget(target)) fail("Invalid previously written target.");
+      if (!morphIdentifier(target)) fail("Invalid previously written target.");
       if (!own(values, target)) values[target] = 0;
     }
     if (reset) {
@@ -190,7 +214,7 @@
     return { result: result, model: model, values: values, response: response };
   }
 
-  const api = Object.freeze({ parseHuman, validateHuman, getProfile, validateMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
+  const api = Object.freeze({ parseHuman, validateHuman, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWLink = api;
 })(typeof window !== "undefined" ? window : globalThis);
