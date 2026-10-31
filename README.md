@@ -1,8 +1,9 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev**, the generic sparse-matrix candidate.
+This development branch builds **0.4.0-dev.3**, the generic sparse-matrix and actor-weight candidate.
 Published 0.3.0 remains on `main` and on its release page. This candidate adds
-model-validated custom targets, near-zero edge omission and selected-family XML;
+model-validated custom targets, near-zero edge omission, Vanilla weight-only
+profiles for both sexes and independently selected male/female game XML;
 it does not introduce new body, head, colour or physics deformations.
 
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
@@ -46,7 +47,7 @@ manifest filename `addon.json` and its keys keep Morphbench's public names.
 
 This is the independent [CLAW Morphbench plugin repository](https://github.com/Vhodnoylogin/claw-morphbench-plugin).
 It contains this browser plugin, its tests and publication artwork. CLAW's game
-DLL, body authoring and runtime belong to [CLAW - Configurable Lycanthrope Anatomy and Weight](https://github.com/Vhodnoylogin/claw).
+DLL, body authoring and runtime belong to [CLAW - Customizable Lycanthrope Appearance and Weight](https://github.com/Vhodnoylogin/claw).
 
 `dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml to
 one committed CLAW feature revision, with per-file SHA256.
@@ -66,9 +67,9 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.3`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
-   **3BA 2.48 female**. Select the exact human and wolf catalog entries and click
+   **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
 3. Import a full human coefficient JSON, a retained evidence-fixture JSON with
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
@@ -78,6 +79,25 @@ Production source is under `src/main/morphbench-plugin`, tests under
    live** switch enables subsequent human slider edits; it starts unchecked.
 5. **Zero owned wolf outputs** preserves the human vector and unowned
    wolf controls. **Close comparison pair** disposes this plugin's two previews.
+
+**Actor weight** is a separate normalized 0..1 scalar. Its initial 0.5 is a manual
+preview default, not a measured game value. A matrix can reference `$actor.weight`
+without requiring that name in a human TRI. Vanilla profiles
+`CLAW.VanillaMale.Weight1` and `CLAW.VanillaFemale.Weight1`, family `Vanilla`,
+version `game-weight-v1`, use this scalar and can open a human NIF with no morphs.
+The same scalar is available to mixed HIMBO/CBBE/3BA matrices when explicitly
+referenced. A required scalar cannot be omitted or silently replaced with zero.
+All five bundled canonical matrices reference it. The HIMBO/CBBE/3BA profiles
+combine human morphs with an actor-weight contribution whose neutral reference
+is 0.5; Vanilla profiles rely on weight alone.
+It never multiplies already-effective human coefficients, writes a TRI slider,
+or interpolates the fixed human/wolf NIF geometry. JSON fixture envelopes can
+supply explicit `actorWeight`; the human `humanValues` map cannot contain actor
+namespace fields. BodySlide coefficient weight remains an independent control.
+When reconstructing one NPC from a BodySlide preset, set its coefficient weight
+and actor weight to the same normalized value. Already-effective JSON is not
+interpolated again. For a Vanilla NIF without TRI controls, use an empty human
+vector `{}`; family changes preserve the supplied vector rather than discarding it.
 
 ## Wolf presets are coefficient and function matrices
 
@@ -118,9 +138,9 @@ human family before importing one. Import validates ID/family/version/sex before
 replacing the current matrix. Pasting the same JSON into the matrix import box
 avoids a native file picker. **Restore canonical matrix** discards local matrix
 edits; it does not apply any coefficients. **Export mapping XML** produces the
-native `MorphLinkProfiles` configuration with exactly one HIMBO male profile and
-one selected CBBE or 3BA female profile, plus explicit defaults. Other families are
-omitted. Select the edited female family before exporting so its edits cannot
+native `MorphLinkProfiles` configuration with exactly one male profile
+(HIMBO or Vanilla) and one female profile (CBBE, 3BA or Vanilla), plus explicit
+defaults. Other families are omitted. Select the edited family for its sex before exporting so its edits cannot
 be silently discarded. Standalone XML export can contain one profile.
 
 The numeric comparison shows edited-matrix output against the canonical matrix
@@ -219,7 +239,9 @@ marshals its 28-byte rule ABI and reads results. The embedded WASM has no import
 engine access, allocator or network calls. Composition uses float32 inputs/gains/caps,
 binary64 function evaluation and accumulation in surviving rule order, then
 `float32(clamp(sum,0,1)*cap)`. Cap multiplication follows clamping;
-NPC weight is absent. Negative target sums reach neutral. Opposed deformations
+Actor weight is an explicit source only when the matrix references it. Its
+reserved namespace and normalized domain are validated by the same C++ exports
+in native and WASM. Negative target sums reach neutral. Opposed deformations
 use explicit lean targets in compatible wolf resources and suitable source
 functions; changing a gain does not invent a missing deformation.
 
@@ -252,11 +274,14 @@ node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/pre
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sdk-integration.cjs './target/plugin/catalog.json' '<host>/web/addon-sdk.js' '<external-real-pair-inputs>'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/matrix.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>' '<external-real-pair-inputs>/fixtures-full-preset-reconstruction.json'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sparse.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/weight.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
 ```
 
 The builder reads the hash-pinned external `src/main/resources/profiles/MorphLinks.xml`,
 validates supported-family subsets and defaults, and preserves surviving XML order.
-The bundled canonical catalog still offers all three current families. It emits ten local browser
+The bundled canonical catalog offers the three morphed human families and two
+sex-specific Vanilla profiles. Before packaging, Node.js validates every catalog
+matrix against the actual generated WASM's reserved-source exports. It emits ten local browser
 assets in a deterministic ZIP, with an external catalog and SHA-256 build report.
 The SDK is loaded from the host and is never copied into the package. The host's
 CSP blocks fetch/XHR, so the mapping is a classic local JS asset and imports use
@@ -269,5 +294,9 @@ latest-input coalescing, family/sex changes, source provenance, complete real
 human fixture vectors and the unchanged actual SDK in a detached DOM/message
 harness. That harness is not an actual browser, renderer or installed-host test.
 The real fixture resources remain outside Git and are not redistributed.
+Candidate fixture expectations are derived independently by the frozen native
+CLI at explicitly retained historical weights. Original game observations and
+human vectors remain unchanged; these new expected coefficients are offline
+calculations, not new runtime observations.
 Textured paired-model appearance, user rotation in the qualified host, game
 assignment, physics and runtime skinning require their separate acceptance.

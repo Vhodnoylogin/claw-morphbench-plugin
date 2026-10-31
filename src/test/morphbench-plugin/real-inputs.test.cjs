@@ -32,10 +32,10 @@ for (const fixtureName of fixtures) test("real full human input and exact mapped
     } };
   const controller = new PreviewController(sdk,catalog);
   await controller.open(fixture.profileId,fixture.resources.human.high,fixture.resources.wolf.high);
-  const result = await controller.apply(imported.values);
+  const result = await controller.apply(imported.values, null, imported.actorWeight);
   const expected = fixture.fullPresetLinkedWolfValues;
   assert.deepEqual({...result.wolfValues},expected);
-  assert.deepEqual({...core.evaluate(catalog,fixture.profileId,fixture.runtimeObservedHumanValues).values},fixture.expectedLinkedWolfValues);
+  assert.deepEqual({...core.evaluate(catalog,fixture.profileId,fixture.runtimeObservedHumanValues,imported.actorWeight).values},fixture.expectedLinkedWolfValues);
   for (const [name,value] of Object.entries(imported.values)) assert.equal(result.humanValues[name],value,name);
   assert.equal(Object.keys(imported.values).length,fixture.sex === "male" ? 124 : 154);
   if (fixtureName === "FThin") {assert.equal(result.humanValues.BigButt,-.25);assert.equal(result.humanValues.Butt,-.5);}

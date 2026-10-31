@@ -32,6 +32,8 @@
   </div>
   <p id="pair-status" class="muted">No comparison pair is open.</p>
   <p class="muted">Declare the actual resource family and sex. Each panel uses its selected fixed NIF. For a weight-100 comparison select both matching _1 files. Intermediate neutral geometry weight is not interpolated.</p>
+  <label for="actor-weight">Actor weight — normalized 0..1</label><input id="actor-weight" type="number" min="0" max="1" step="0.01" value="0.5">
+  <p id="actor-weight-provenance" class="muted">Manual preview actor weight, initially 0.5; not a measured game value. This separate scalar supplies $actor.weight to matrices. It never writes a human TRI slider or blends fixed NIF geometry.</p>
   <label for="human">Human values (finite JSON map)</label>
   <textarea id="human" rows="8" spellcheck="false">{}</textarea>
   <label class="file-label" for="import">Import human JSON, evidence fixture or BodySlide preset XML</label>
@@ -49,7 +51,8 @@
     <p id="matrix-status" class="muted"></p>
     <label for="matrix-import">Import wolf matrix preset JSON or XML</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
     <details><summary>Paste wolf matrix preset JSON or XML</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
-    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option></select>
+    <label for="game-male-family">Installed male body family for game configuration</label><select id="game-male-family"><option value="HIMBO">HIMBO</option><option value="Vanilla">Vanilla</option></select>
+    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="Vanilla">Vanilla</option></select>
     <div class="actions"><button id="matrix-export" type="button">Export wolf preset JSON</button><button id="matrix-xml" type="button">Export game configuration XML</button><button id="matrix-reset" type="button">Restore canonical matrix</button></div>
     <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">
     <div class="table-wrap"><table id="matrix-table"><thead><tr><th>Edge</th><th>Human source</th><th>Wolf target</th><th>Function</th><th>Gain</th><th>Target cap</th><th>Exponent / constant</th><th>Order / remove</th></tr></thead><tbody id="matrix-rows"></tbody></table></div>

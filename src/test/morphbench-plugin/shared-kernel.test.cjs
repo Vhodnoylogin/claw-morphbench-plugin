@@ -27,8 +27,8 @@ test("native game configuration contains only the selected male and female profi
     assert.equal(parsed.defaults.female,catalog.profiles.find(p=>p.family === family).id);
     assert.equal(parsed.profiles.length,2);
     for (const profile of catalog.profiles.filter(p=>p.family === "HIMBO" || p.family === family)) {
-      const result = spawnSync(native,["matrix",file,profile.id],{input:"",encoding:"utf8"});assert.equal(result.status,0,result.stderr);
-      const observed=JSON.parse(result.stdout), expected=core.evaluateMatrix(profile.family === "HIMBO" ? matrix:profile,{}).values;
+      const result = spawnSync(native,["matrix",file,profile.id],{input:"$actor.weight\t0.5\n",encoding:"utf8"});assert.equal(result.status,0,result.stderr);
+      const observed=JSON.parse(result.stdout), expected=core.evaluateMatrix(profile.family === "HIMBO" ? matrix:profile,{},.5).values;
       for (const [name,value] of Object.entries(expected)) assert.equal(Math.fround(observed[name]),value,name);
     }
     const omitted=catalog.profiles.find(p=>p.family !== "HIMBO" && p.family !== family);

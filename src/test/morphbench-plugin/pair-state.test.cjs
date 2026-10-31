@@ -9,15 +9,17 @@ const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]), "utf8"
 const female = catalog.profiles.find(profile => profile.family === "3BA").id;
 const cbbe = catalog.profiles.find(profile => profile.family === "CBBE").id;
 const male = catalog.profiles.find(profile => profile.family === "HIMBO").id;
+// Ownership/rotation regressions retain their original coefficient inputs at neutral actor weight.
+class NeutralWeightPairState extends PairState { plan(values, matrix = null) { return super.plan(values, matrix, .5); } }
 const tick = () => new Promise(setImmediate);
 const resource = (id, sex = "female", revision = "r1") => ({ id, revision, view: "view:" + id, sex });
 function fixture() {
-  const state = new PairState(catalog);
+  const state = new NeutralWeightPairState(catalog);
   const bindings = { human: resource("human"), wolf: resource("wolf") };
   state.bind(female, bindings);
-  const humanNames = [...new Set(catalog.profiles.flatMap(profile => profile.rules.map(rule => rule.source))), "HumanOther"];
+  const humanNames = [...new Set(catalog.profiles.flatMap(profile => profile.rules.filter(rule => rule.source && core.sourceKind(rule.source) === 0).map(rule => rule.source))), "HumanOther"];
   const snapshots = { human: { binding: bindings.human, names: humanNames },
-    wolf: { binding: bindings.wolf, names: [...Object.keys(core.evaluate(catalog, female, {}).values), "CLAWHeadEarSize", "CLAWTailLength"] } };
+    wolf: { binding: bindings.wolf, names: [...Object.keys(core.evaluate(catalog, female, {}, .5).values), "CLAWHeadEarSize", "CLAWTailLength"] } };
   state.arm(snapshots);
   return { state, bindings, snapshots };
 }
@@ -25,7 +27,7 @@ const receipt = operation => ({ committed: true, complete: true, token: operatio
 
 test("immutable pair plans keep one human vector and the unchanged exact float32 mapping", () => {
   const { state } = fixture(), input = { Belly: .7, BigBelly: .7, HumanOther: -.25 };
-  const expected = core.evaluate(catalog, female, input).values;
+  const expected = core.evaluate(catalog, female, input, .5).values;
   const operation = state.plan(input); input.Belly = 0;
   assert.equal(operation.values.human.Belly, Math.fround(.7));
   assert.equal(operation.values.human.HumanOther, -.25);
@@ -38,7 +40,7 @@ test("immutable pair plans keep one human vector and the unchanged exact float32
 });
 
 test("pair authority requires distinct resource/view identities and matching declared sex", () => {
-  const state = new PairState(catalog);
+  const state = new NeutralWeightPairState(catalog);
   assert.throws(() => state.bind(female, { human: resource("same"), wolf: resource("same") }), /distinct/);
   assert.throws(() => state.bind(female, { human: resource("human", "male"), wolf: resource("wolf") }), /sex/);
   assert.throws(() => state.bind(female, { human: { id: "human" }, wolf: resource("wolf") }), /identity/);

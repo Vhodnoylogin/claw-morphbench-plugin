@@ -34,7 +34,7 @@
   }
   function kernel() {
     const value = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
-    if (!value || typeof value.gainActive !== "function") fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
+    if (!value || ["gainActive", "sourceKind", "sourceValueValid"].some(name => typeof value[name] !== "function")) fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
     return value;
   }
   function validateHuman(values) {
@@ -42,16 +42,27 @@
     validateMorphNames(Object.keys(values));
     const result = Object.create(null);
     for (const [name, value] of Object.entries(values)) {
+      const kind = kernel().sourceKind(name);
+      if (kind !== 0) fail("Actor scalar inputs belong in the separate actor controls, not human TRI morphs.");
       result[name] = finiteFloat(value, name);
+      if (!kernel().sourceValueValid(kind, result[name])) fail("Shared CLAW source validator rejected human input: " + name);
     }
     return result;
   }
   function parseHuman(text) { return validateHuman(JSON.parse(text)); }
 
   const functions = new Set(["linear", "positive", "negative", "smoothstep", "power", "constant"]);
+  function validateActorWeight(value) {
+    const weight = finiteFloat(value, "Actor weight");
+    if (!kernel().sourceValueValid(1, weight)) fail("Actor weight must be normalized in [0,1].");
+    return weight;
+  }
+  function sourceKind(name) { return kernel().sourceKind(name); }
+  function matrixTargets(matrix) { return [...new Set(validateMatrix(matrix).rules.map(rule => rule.target))]; }
   function validateMatrix(profile) {
-    if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "HIMBO"].includes(profile.family) ||
-        profile.sex !== (profile.family === "HIMBO" ? "male" : "female") ||
+    if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "HIMBO", "Vanilla"].includes(profile.family) ||
+        !["male", "female"].includes(profile.sex) ||
+        (profile.family !== "Vanilla" && profile.sex !== (profile.family === "HIMBO" ? "male" : "female")) ||
         Object.keys(profile).some(key => !["id", "family", "sex", "version", "calibration", "rules"].includes(key)) ||
         !Array.isArray(profile.rules) || profile.rules.length > 128) {
       fail("Invalid CLAW profile metadata.");
@@ -70,6 +81,9 @@
       if (!functions.has(fn) || Object.keys(rule).some(key => !allowed.has(key)) ||
           (fn === "constant" ? rule.source !== "" : !morphIdentifier(rule.source)) || !morphIdentifier(rule.target)) {
         fail("Invalid CLAW mapping rule or function parameters.");
+      }
+      if ((fn !== "constant" && kernel().sourceKind(rule.source) < 0) || kernel().sourceKind(rule.target) !== 0) {
+        fail("Unsupported reserved actor source or actor namespace target.");
       }
       const gain = finiteFloat(rule.gain, "Rule gain");
       const cap = finiteFloat(rule.cap, "Rule cap");
@@ -136,18 +150,19 @@
     return lines.join("\n") + "\n";
   }
 
-  function evaluate(catalog, profileId, humanValues) {
-    return evaluateMatrix(getProfile(catalog, profileId), humanValues);
+  function evaluate(catalog, profileId, humanValues, actorWeight) {
+    return evaluateMatrix(getProfile(catalog, profileId), humanValues, actorWeight);
   }
 
-  function exportCatalog(catalog, matrix, femaleFamily) {
+  function exportCatalog(catalog, matrix, femaleFamily, maleFamily = "HIMBO") {
     const edited = validateMatrix(matrix);
-    if (!["CBBE", "3BA"].includes(femaleFamily)) fail("Declare the installed female body family before exporting game configuration.");
+    if (!["CBBE", "3BA", "Vanilla"].includes(femaleFamily) || !["HIMBO", "Vanilla"].includes(maleFamily)) fail("Declare the installed male and female body families before exporting game configuration.");
     if (edited.sex === "female" && edited.family !== femaleFamily) fail("Select the edited female family before exporting game configuration.");
-    const selected = ["HIMBO", femaleFamily].map(family => {
-      const matches = catalog.profiles.filter(profile => profile.family === family);
+    if (edited.sex === "male" && edited.family !== maleFamily) fail("Select the edited male family before exporting game configuration.");
+    const selected = [["male", maleFamily], ["female", femaleFamily]].map(([sex, family]) => {
+      const matches = catalog.profiles.filter(profile => profile.family === family && profile.sex === sex);
       if (matches.length !== 1) fail("Ambiguous game configuration families or identifiers.");
-      return edited.family === family ? edited : validateMatrix(matches[0]);
+      return edited.family === family && edited.sex === sex ? edited : validateMatrix(matches[0]);
     });
     const [male, female] = selected;
     if (male.id === female.id) fail("Ambiguous game configuration identifiers.");
@@ -156,8 +171,10 @@
     return '<MorphLinkProfiles schemaVersion="1">\n  <Defaults male="' + male.id + '" female="' + female.id + '" />\n' + body + '\n</MorphLinkProfiles>\n';
   }
 
-  function evaluateMatrix(matrix, humanValues) {
+  function evaluateMatrix(matrix, humanValues, actorWeight) {
     const profile = validateMatrix(matrix), human = validateHuman(humanValues);
+    const weight = actorWeight === undefined ? undefined : validateActorWeight(actorWeight);
+    if (weight === undefined && profile.rules.some(rule => rule.function !== "constant" && kernel().sourceKind(rule.source) === 1)) fail("An explicit normalized actor weight is required by this matrix.");
     const humanByIdentity = new Map(Object.entries(human).map(([name, value]) => [providerIdentity(name), value]));
     const targets = new Map(), mappedSources = new Set();
     for (const rule of profile.rules) {
@@ -166,7 +183,7 @@
     const ordered = Array.from(targets.keys());
     const numericRules = profile.rules.map(rule => ({ ...rule,
       target: ordered.indexOf(rule.target),
-      input: rule.function === "constant" ? 0 : (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
+      input: rule.function === "constant" ? 0 : kernel().sourceKind(rule.source) === 1 ? weight : (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
     const numeric = kernel().evaluate(numericRules, ordered.length);
     profile.rules.forEach((rule, index) => {
       const row = targets.get(rule.target);
@@ -181,7 +198,7 @@
       row.value = numeric.values[index]; values[target] = row.value;
     });
     const rows = Array.from(targets.values()).sort((a, b) => a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
-    return { profile: profile, rows: rows, values: values,
+    return { profile: profile, rows: rows, values: values, actorWeight: weight,
       unmapped: Object.keys(human).filter(name => !mappedSources.has(providerIdentity(name))).sort() };
   }
 
@@ -196,8 +213,8 @@
     return scene.names.nif;
   }
 
-  async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten) {
-    const result = evaluate(catalog, profileId, human);
+  async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten, actorWeight) {
+    const result = evaluate(catalog, profileId, human, actorWeight);
     const values = Object.assign(Object.create(null), result.values);
     for (const target of previouslyWritten || []) {
       if (!morphIdentifier(target)) fail("Invalid previously written target.");
@@ -214,7 +231,7 @@
     return { result: result, model: model, values: values, response: response };
   }
 
-  const api = Object.freeze({ parseHuman, validateHuman, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
+  const api = Object.freeze({ parseHuman, validateHuman, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWLink = api;
 })(typeof window !== "undefined" ? window : globalThis);

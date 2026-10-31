@@ -2,11 +2,11 @@
   "schemaVersion": 1,
   "claw": {
     "repository": "https://github.com/Vhodnoylogin/claw",
-    "commit": "c749ef2283e041e4a7f48a6d83b503530c67d758",
+    "commit": "ed0f466519a6d16c284af1a80f0adb9406523b30",
     "files": {
-      "src/main/cpp/shared/MatrixKernel.h": "bde312c1254d1c1b588abe833bf227babd14aede1d6673336938f6fa93567839",
-      "src/main/cpp/shared/MatrixKernel.cpp": "e09d7111471e54402ca7ca9b8b17271cc3ad3b84ac1f83001388c5e585ddd267",
-      "src/main/resources/profiles/MorphLinks.xml": "b237473b986c8ea138a560757db37b3225e90f688c6396448bdcc5a459786ec1"
+      "src/main/cpp/shared/MatrixKernel.h": "7b96a88e910bfb821f0803d074c4ae73a76e59b39ff4ec016862737f4d29508e",
+      "src/main/cpp/shared/MatrixKernel.cpp": "5f10588b7c6f66b4e8808fb513966462138937b18a68f56f6d79d8e1b6a4d611",
+      "src/main/resources/profiles/MorphLinks.xml": "ac764466475403130c3f5498752b4e05605662df2fff408e56dbb8569a1340f4"
     }
   }
 }

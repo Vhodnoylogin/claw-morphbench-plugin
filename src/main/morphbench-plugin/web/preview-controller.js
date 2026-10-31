@@ -189,9 +189,10 @@
         }
       });
     }
-    apply(fullHumanVector, matrix = null) {
-      let human, selectedMatrix;
-      try { human = core.validateHuman(fullHumanVector); selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null; }
+    apply(fullHumanVector, matrix = null, actorWeight) {
+      let human, selectedMatrix, weight;
+      try { human = core.validateHuman(fullHumanVector); selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
+        weight = actorWeight === undefined ? undefined : core.validateActorWeight(actorWeight); }
       catch (error) { return Promise.reject(error); }
       return this._enqueue("apply", this._epoch, async (_, epoch) => {
         const pair = this._pair;
@@ -199,10 +200,11 @@
         this._assert(epoch, pair);
         // PairState validates every supplied human name and every wolf target
         // before either scoped write. Unmapped human TRI names remain present.
-        const operation = this._state.plan(human, selectedMatrix);
-        const evaluated = selectedMatrix ? core.evaluateMatrix(selectedMatrix, human) : core.evaluate(this.catalog, pair.profileId, human);
+        const operation = this._state.plan(human, selectedMatrix, weight);
+        const evaluated = selectedMatrix ? core.evaluateMatrix(selectedMatrix, human, weight) : core.evaluate(this.catalog, pair.profileId, human, weight);
         try {
           for (const role of ["human", "wolf"]) {
+            if (!Object.keys(operation.values[role]).length) continue;
             const response = await this._request("previews.morphs.set", { preview: pair[role].preview, values: operation.values[role] }, epoch, pair);
             readback(response, pair[role].names, operation.values[role]);
           }
@@ -210,7 +212,7 @@
             throw failure("stalePair", "The paired morph receipt is stale.");
           }
           const result = frozen({ humanValues: copy(operation.values.human), wolfValues: copy(operation.values.wolf),
-            unmapped: [...evaluated.unmapped], profile: copy(evaluated.profile) });
+            unmapped: [...evaluated.unmapped], profile: copy(evaluated.profile), actorWeight: weight });
           this._notify("apply"); return result;
         } catch (error) { await this._discard(pair, error); throw error; }
       });

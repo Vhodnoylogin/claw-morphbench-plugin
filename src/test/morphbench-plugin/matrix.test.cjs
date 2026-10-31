@@ -45,13 +45,13 @@ if (process.argv[2] && process.argv[3] && process.argv[4]) {
   const native = path.resolve(process.argv[3]), external = path.resolve(process.argv[4]);
   fs.mkdirSync(external, { recursive: true });
   let cases = 0, values = 0;
-  const compare = (matrix, human, label) => {
+  const compare = (matrix, human, label, actorWeight) => {
     const filename = path.join(external, "parity-matrix.xml");
     fs.writeFileSync(filename, core.exportMatrix(matrix));
-    const input = Object.entries(human).map(([name, value]) => `${name}\t${Math.fround(value)}`).join("\n") + "\n";
+    const input = Object.entries({...human,...(actorWeight === undefined ? {} : {"$actor.weight":actorWeight})}).map(([name, value]) => `${name}\t${Math.fround(value)}`).join("\n") + "\n";
     const result = cp.spawnSync(native, ["matrix", filename, matrix.id], { input, encoding: "utf8" });
     assert.equal(result.status, 0, `${label}: ${result.stderr}`);
-    const observed = JSON.parse(result.stdout), expected = core.evaluateMatrix(matrix, human).values;
+    const observed = JSON.parse(result.stdout), expected = core.evaluateMatrix(matrix, human, actorWeight).values;
     for (const [target, value] of Object.entries(expected)) {
       assert.equal(Math.fround(observed[target]), value, `${label} ${target}`); values++;
     }
@@ -89,8 +89,8 @@ if (process.argv[2] && process.argv[3] && process.argv[4]) {
     const fixtureResults = [];
     if (fixturePath) for (const fixture of JSON.parse(fs.readFileSync(path.resolve(fixturePath), "utf8"))) {
       const matrix = core.getProfile(catalog, fixture.profileId);
-      compare(matrix, fixture.humanValues, fixture.fixture);
-      fixtureResults.push({ fixture: fixture.fixture, profile: matrix.id, values: core.evaluateMatrix(matrix, fixture.humanValues).values });
+      compare(matrix, fixture.humanValues, fixture.fixture, fixture.actorWeight);
+      fixtureResults.push({ fixture: fixture.fixture, profile: matrix.id, values: core.evaluateMatrix(matrix, fixture.humanValues, fixture.actorWeight).values });
     }
     fs.writeFileSync(path.join(external, "native-js-parity.json"), JSON.stringify({ cases, float32ValuesCompared: values, bitEqual: true, fixtureResults }, null, 2) + "\n");
   });

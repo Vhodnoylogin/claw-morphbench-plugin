@@ -90,7 +90,7 @@ def float32(value: str) -> float:
 GAIN_EPSILON = float32("1e-6")
 
 
-def catalog_from_bytes(data: bytes) -> dict:
+def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False) -> dict:
     if (len(data) > 1024 * 1024 or any(byte >= 127 or (byte < 32 and byte not in (9, 10, 13)) for byte in data)
             or b"<!" in data or b"<?" in data or b"&" in data):
         raise ValueError("Oversize XML or unsupported declarations/entities")
@@ -116,12 +116,13 @@ def catalog_from_bytes(data: bytes) -> dict:
         metadata = dict(child.attrib)
         profile_id, family = metadata["id"], metadata["family"]
         if (not all(identifier(value) for value in metadata.values()) or profile_id in ids
-                or family in families or family not in {"CBBE", "3BA", "HIMBO"}
-                or metadata["sex"] != ("male" if family == "HIMBO" else "female")):
+                or (family, metadata["sex"]) in families or family not in {"CBBE", "3BA", "HIMBO", "Vanilla"}
+                or metadata["sex"] not in {"male", "female"}
+                or (family != "Vanilla" and metadata["sex"] != ("male" if family == "HIMBO" else "female"))):
             raise ValueError("Invalid, duplicate or wrong-sex resource family")
         ids.add(profile_id)
-        families.add(family)
-        rules, pairs, caps, source_names, target_names = [], set(), {}, {}, {}
+        families.add((family, metadata["sex"]))
+        rules, raw_rules, pairs, caps, source_names, target_names = [], [], set(), {}, {}, {}
         if len(child) > 128:
             raise ValueError("Invalid raw rule count")
         for rule in child:
@@ -153,6 +154,7 @@ def catalog_from_bytes(data: bytes) -> dict:
                     raise ValueError("Power exponent must be in 1..8")
             if function == "constant":
                 edge["value"] = float32(rule.attrib["value"])
+            raw_rules.append(edge)
             if abs(gain) <= GAIN_EPSILON:
                 continue
             for names, name in ((source_names, source), (target_names, target)):
@@ -171,7 +173,7 @@ def catalog_from_bytes(data: bytes) -> dict:
             raise ValueError("A sparse matrix supports at most 64 active targets")
         if source_names.keys() & target_names.keys():
             raise ValueError("Active source and target names must not overlap")
-        metadata["rules"] = rules
+        metadata["rules"] = raw_rules if retain_inactive else rules
         profiles.append(metadata)
     if not profiles:
         raise ValueError("Expected at least one profile")
@@ -199,7 +201,8 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
                "-fno-exceptions", "-fno-rtti", "-fno-builtin", "-ffp-contract=off", "-fno-fast-math",
                "-Wl,--no-entry", "-Wl,--export-memory", "-Wl,--export=__heap_base",
                *["-Wl,--export="+name for name in ("claw_matrix_transform", "claw_matrix_contribution", "claw_matrix_clamp", "claw_matrix_evaluate",
-                                                    "claw_matrix_gain_active", "claw_matrix_gain_epsilon")],
+                                                    "claw_matrix_gain_active", "claw_matrix_gain_epsilon",
+                                                    "claw_matrix_source_kind", "claw_matrix_source_value_valid")],
                str(shared / "MatrixKernel.cpp"), "-o", str(wasm)]
     subprocess.run(command, check=True, capture_output=True, text=True)
     for name, data in sources.items():
@@ -218,6 +221,27 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
                     "command": command, "bytes": len(data)}
 
 
+def validate_shared_catalog(catalog: dict, bridge: Path) -> None:
+    """The packaged C++ kernel owns reserved-source semantics, including build gates."""
+    node = shutil.which("node")
+    if not node:
+        raise ValueError("Node.js is required to validate the catalog against its shared WASM kernel")
+    code = ("const fs=require('node:fs'),core=require(process.argv[1]);"
+            "const catalog=JSON.parse(fs.readFileSync(0,'utf8'));"
+            "for(const profile of catalog.profiles)core.validateMatrix(profile);")
+    checked = subprocess.run([node, "--require", str(bridge), "-e", code, str(HERE / "web/core.js")],
+                             input=json.dumps(catalog, ensure_ascii=True).encode("utf-8"), capture_output=True)
+    if checked.returncode:
+        raise ValueError("Shared-kernel catalog validation failed: " + checked.stderr.decode("utf-8", errors="replace"))
+
+
+def catalog_with_shared_validation(data: bytes, bridge: Path) -> dict:
+    # Preserve every structurally checked edge until the shared semantic gate.
+    # Inactive edges cannot hide unsupported reserved names from that gate.
+    validate_shared_catalog(catalog_from_bytes(data, retain_inactive=True), bridge)
+    return catalog_from_bytes(data)
+
+
 def build(output_dir: Path, compiler: str | None = None,
           claw_source_dir: Path | None = None) -> dict:
     output_dir = output_dir.resolve()
@@ -226,7 +250,7 @@ def build(output_dir: Path, compiler: str | None = None,
     dependency = dependency_root(claw_source_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
     bridge, kernel = compile_kernel(output_dir, compiler, dependency)
-    catalog = catalog_from_bytes((dependency / SOURCE_RELATIVE).read_bytes())
+    catalog = catalog_with_shared_validation((dependency / SOURCE_RELATIVE).read_bytes(), output_dir / "matrix-kernel.js")
     dependency_root(dependency)
     catalog["generator"] = {"path": "src/main/morphbench-plugin/build.py",
                             "sha256": hashlib.sha256(Path(__file__).read_bytes().replace(b"\r\n", b"\n")).hexdigest()}

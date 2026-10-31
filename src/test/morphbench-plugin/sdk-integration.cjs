@@ -7,7 +7,8 @@ if (!process.argv[2] || !process.argv[3]) throw new Error("Pass catalog.json, ac
 const catalog = JSON.parse(fs.readFileSync(path.resolve(process.argv[2]), "utf8"));
 const sdkSource = fs.readFileSync(path.resolve(process.argv[3]), "utf8");
 const realRoot = process.argv[4] ? path.resolve(process.argv[4]) : null;
-const source = name => fs.readFileSync(path.join(__dirname, "../../main/morphbench-plugin/web", name), "utf8");
+const consumerRoot = process.argv[5] ? path.resolve(process.argv[5]) : path.join(__dirname, "../../main/morphbench-plugin/web");
+const source = name => fs.readFileSync(path.join(consumerRoot, name), "utf8");
 class Element {
   constructor(tag = "div") { this.tagName = tag; this.value = ""; this.textContent = ""; this.disabled = false; this.checked = false; this.children = []; this.events = {}; this.files = []; }
   appendChild(child) { this.children.push(child); if (this.tagName === "select" && this.children.length === 1) this.value = child.value; return child; }
@@ -20,20 +21,20 @@ class Element {
   async fire(name) { assert.equal(typeof this.events[name], "function"); return this.events[name](); }
 }
 function harness({ stable = false, missing = null, failWolfSet = false, geometry = false,
-  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, wolfNamesOverride = null } = {}) {
+  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, wolfNamesOverride = null, humanNamesOverride = null } = {}) {
   const nodes = new Map(), events = new Map(), calls = [], previews = new Map(); let serial = 0;
-  const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family"]);
+  const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family", "game-male-family"]);
   const element = id => { if (!nodes.has(id)) nodes.set(id, new Element(selectIds.has(id) ? "select" : "div")); return nodes.get(id); };
   let exportText = "", maximumExportPageBytes = 0;
   Object.defineProperty(element("export-text"), "value", {
     get() { return exportText; },
     set(value) { exportText = value; maximumExportPageBytes = Math.max(maximumExportPageBytes, Buffer.byteLength(value, "utf8")); }
   });
-  element("human").value = "{}"; element("weight").value = "1";
+  element("human").value = "{}"; element("weight").value = "1"; element("actor-weight").value = "0.5";
   const profile = catalog.profiles.find(item => item.family === "3BA");
-  const humanNames = realRoot ? JSON.parse(fs.readFileSync(path.join(realRoot,"resource-name-audit.json"),"utf8"))[0].morphNames :
-    [...new Set([...profile.rules.map(rule => rule.source), "Butt", "BigButt", "MuscleAbs", "HumanOther"])];
-  const wolfNames = wolfNamesOverride || Object.keys(core.evaluate(catalog, profile.id, {}).values).filter(name => name !== missing).concat(["CLAWHeadEarSize", "CLAWTailLength"]);
+  const humanNames = humanNamesOverride || (realRoot ? JSON.parse(fs.readFileSync(path.join(realRoot,"resource-name-audit.json"),"utf8"))[0].morphNames :
+    [...new Set([...profile.rules.filter(rule => rule.source && core.sourceKind(rule.source) === 0).map(rule => rule.source), "Butt", "BigButt", "MuscleAbs", "HumanOther"])]);
+  const wolfNames = wolfNamesOverride || core.matrixTargets(profile).filter(name => name !== missing).concat(["CLAWHeadEarSize", "CLAWTailLength"]);
   const legacyValues = { LegacyMain: .33 };
   const geometryVertices = geometryVertexCount === 3 ? [1, 2, 3, -1, -2, -3, .5, .5, .5] :
     Array.from({ length: geometryVertexCount * 3 }, (_, index) => (index % 997) / 997 - .5);
@@ -72,6 +73,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
     });
   } };
   element("game-female-family").value = "3BA"; // Native HTML select's first option.
+  element("game-male-family").value = "HIMBO";
   const context = vm.createContext({ parent, TextEncoder, console, setTimeout, clearTimeout, WebAssembly, Buffer,
     document: { getElementById: element, createElement: tag => new Element(tag), body: new Element("body") },
     addEventListener(name, handler) { events.set(name, handler); } }); context.window = context; context.CLAWMorphCatalog = catalog;
@@ -83,6 +85,47 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
 const settle = () => new Promise(setImmediate);
 async function open(bench) { await settle(); bench.element("human-model").value = "human.nif"; bench.element("wolf-model").value = "wolf.nif";
   await bench.element("human-model").fire("change"); await bench.element("open-pair").fire("click"); }
+
+for (const sex of ["male", "female"]) for(const humanNames of [[],["$actor.weight"]]) test("actual SDK opens weight-only vanilla " + sex + " with " + humanNames.length + " reserved model names without treating actor weight as a TRI slider", async () => {
+  const profile=catalog.profiles.find(p=>p.family==="Vanilla"&&p.sex===sex);assert.ok(profile);
+  const bench=harness({humanNamesOverride:humanNames,wolfNamesOverride:core.matrixTargets(profile).concat(["CLAWHeadEarSize","CLAWTailLength"])});await settle();
+  bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
+  assert.equal(bench.element("apply").disabled,false);assert.equal(bench.element("shared-sliders").children.length,0);
+  assert.match(bench.element("pair-status").textContent,/Fixed selected NIFs/);
+  const expected=core.evaluateMatrix(profile,{},.75).values;
+  bench.element("actor-weight").value="0.75";await bench.element("actor-weight").fire("change");
+  assert.match(bench.element("actor-weight-provenance").textContent,/Manually edited/);
+  assert.equal(bench.calls.filter(c=>c.method==="previews.morphs.set").length,0);
+  await bench.element("apply").fire("click");
+  assert.match(bench.element("status").textContent,/Applied 0 human inputs/);
+  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set");assert.equal(writes.length,1);
+  assert.equal(writes[0].params.preview,"opaque:2");
+  for(const [name,value]of Object.entries(expected))assert.equal(writes[0].params.values[name],value);
+  assert.ok(!Object.hasOwn(writes[0].params.values,"$actor.weight"));
+  await bench.element("snapshot-export").fire("click");
+  assert.equal(JSON.parse(bench.element("export-text").value).actorWeight,.75);
+  const count=bench.calls.length;bench.element("actor-weight").value="";await bench.element("apply").fire("click");
+  assert.match(bench.element("status").textContent,/explicit normalized actor weight/);assert.equal(bench.calls.length,count);
+  await bench.element("close-pair").fire("click");
+});
+
+test("actual SDK keeps mixed actor weight separate and clears former generic outputs through the UI",async()=>{
+  const bench=harness({humanNamesOverride:["Belly","HumanOther"],wolfNamesOverride:["Custom.Human","Custom.Weight","CLAWHeadEarSize","CLAWTailLength"]});
+  await settle();
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"Custom.Human",gain:1,cap:1},{source:"$actor.weight",target:"Custom.Weight",gain:1,cap:1}]};
+  const load=async p=>{bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile:p});await bench.element("matrix-paste-load").fire("click");};
+  await load(profile);await open(bench);
+  bench.element("human").value='{"Belly":0.5,"HumanOther":-0.25}';
+  for(const weight of [.75,.25]){
+    bench.element("actor-weight").value=String(weight);await bench.element("actor-weight").fire("change");await bench.element("apply").fire("click");
+    const human=[...bench.previews.values()].find(p=>p.name==="human.nif"),wolf=[...bench.previews.values()].find(p=>p.name==="wolf.nif");
+    assert.equal(human.values.Belly,.5);assert.equal(human.values.HumanOther,-.25);
+    assert.equal(wolf.values["Custom.Human"],.5);assert.equal(wolf.values["Custom.Weight"],weight);
+    assert.ok(!Object.hasOwn(human.values,"$actor.weight"));
+  }
+  await load({...profile,rules:[profile.rules[0]]});await bench.element("apply").fire("click");
+  const wolf=[...bench.previews.values()].find(p=>p.name==="wolf.nif");assert.equal(wolf.values["Custom.Weight"],0);assert.equal(wolf.values.CLAWHeadEarSize,.6);
+});
 
 test("pasted standalone matrix loads without a file picker and stays independent of human values", async () => {
   const bench=harness(); await open(bench);

@@ -50,6 +50,7 @@
       provenance[name] = typeof declared === "string" ? declared : "Imported preview coefficient; runtime provenance unspecified";
     }
     return { values, provenance, profileId: envelope && typeof parsed.profileId === "string" ? parsed.profileId : null,
+      actorWeight: envelope && Object.hasOwn(parsed, "actorWeight") ? core.validateActorWeight(parsed.actorWeight) : undefined,
       label: envelope && typeof parsed.sourceMode === "string" ? parsed.sourceMode : "Imported coefficient vector",
       completeness: envelope && object(parsed.runtimeObservationCompleteness) ? parsed.runtimeObservationCompleteness : null };
   }
@@ -153,7 +154,7 @@
     if (!object(parsed) || parsed.schemaVersion !== 1 || parsed.kind !== "claw-wolf-coefficient-snapshot" ||
         parsed.profileId !== profile.id || !object(parsed.wolfValues)) fail("Expected a wolf coefficient snapshot for this exact human family.");
     core.validateMorphNames(Object.keys(parsed.wolfValues));
-    const allowed = new Map(Object.keys(core.evaluateMatrix(profile, {}).values).map(name => [core.providerIdentity(name), name])), values = Object.create(null);
+    const allowed = new Map(core.matrixTargets(profile).map(name => [core.providerIdentity(name), name])), values = Object.create(null);
     for (const [name, value] of Object.entries(parsed.wolfValues)) {
       const target = allowed.get(core.providerIdentity(name));
       if (!target) fail("Snapshot contains an unsupported wolf target: " + name);

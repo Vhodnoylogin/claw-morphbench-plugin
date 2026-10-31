@@ -10,7 +10,7 @@
     throw new Error("CLAW shared computation kernel could not start. This Morphbench host must permit packaged WebAssembly. " + error.message);
   }
   const exports = instance.exports;
-  if (typeof exports.claw_matrix_gain_active !== "function" || typeof exports.claw_matrix_gain_epsilon !== "function") {
+  if (["claw_matrix_gain_active", "claw_matrix_gain_epsilon", "claw_matrix_source_kind", "claw_matrix_source_value_valid"].some(name => typeof exports[name] !== "function")) {
     throw new Error("CLAW sparse matrix kernel exports are unavailable.");
   }
   const functions = Object.freeze({ linear: 0, positive: 1, negative: 2, smoothstep: 3, power: 4, constant: 5 });
@@ -18,8 +18,16 @@
   const ruleBytes = 28, maxRules = 128, maxTargets = 64;
   const outputs = base + ruleBytes * maxRules;
   const sums = outputs + 4 * maxTargets;
-  const required = sums + 8 * maxTargets;
+  const namePointer = sums + 8 * maxTargets;
+  const required = namePointer + 160;
   if (exports.memory.buffer.byteLength < required) exports.memory.grow(Math.ceil((required - exports.memory.buffer.byteLength) / 65536));
+  function sourceKind(name) {
+    if (typeof name !== "string") throw new Error("A shared-kernel source name must be a string.");
+    const encoded = new TextEncoder().encode(name);
+    if (encoded.length > 160) throw new Error("A shared-kernel source name exceeds 160 bytes.");
+    new Uint8Array(exports.memory.buffer, namePointer, encoded.length).set(encoded);
+    return exports.claw_matrix_source_kind(namePointer, encoded.length);
+  }
   function evaluate(rules, targetCount) {
     if (!Array.isArray(rules) || rules.length > maxRules ||
         !Number.isInteger(targetCount) || targetCount < 0 || targetCount > maxTargets ||
@@ -50,7 +58,9 @@
       }))
     };
   }
-  global.CLAWMatrixKernel = Object.freeze({ evaluate, gainActive: gain => Boolean(exports.claw_matrix_gain_active(gain)),
+  global.CLAWMatrixKernel = Object.freeze({ evaluate, sourceKind,
+    sourceValueValid: (kind, value) => Boolean(exports.claw_matrix_source_value_valid(kind, value)),
+    gainActive: gain => Boolean(exports.claw_matrix_gain_active(gain)),
     gainEpsilon: exports.claw_matrix_gain_epsilon(), sourceSha256: "__CLAW_SOURCE_SHA256__", wasmSha256: "__CLAW_WASM_SHA256__", abi: 1 });
   if (typeof module !== "undefined" && module.exports) module.exports = global.CLAWMatrixKernel;
 })(typeof window !== "undefined" ? window : globalThis);

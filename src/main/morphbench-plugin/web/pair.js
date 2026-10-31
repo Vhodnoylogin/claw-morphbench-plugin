@@ -68,9 +68,9 @@
       const available = {};
       for (const role of roles) available[role] = names(snapshots[role], this.bindings[role]);
       const humanIdentities = new Set(Array.from(available.human, core.providerIdentity));
-      if (profile.rules.some(rule => rule.function !== "constant") &&
-          !profile.rules.some(rule => rule.function !== "constant" && humanIdentities.has(core.providerIdentity(rule.source)))) fail("Human model has no configured source morphs for the declared family.");
-      const targets = Object.keys(core.evaluateMatrix(profile, {}).values);
+      if (profile.rules.some(rule => rule.function !== "constant" && core.sourceKind(rule.source) === 0) &&
+          !profile.rules.some(rule => rule.function !== "constant" && core.sourceKind(rule.source) === 0 && humanIdentities.has(core.providerIdentity(rule.source)))) fail("Human model has no configured source morphs for the declared family.");
+      const targets = core.matrixTargets(profile);
       const missing = targets.filter(name => !available.wolf.has(name));
       if (missing.length) fail("Wolf model is missing linked targets: " + missing.join(", "));
       this.epoch += 1; this.available = available; this.enabled = true;
@@ -79,17 +79,17 @@
     ledger(role, resource = this.bindings && this.bindings[role]) {
       return new Set(resource ? this.owned.get(role + ":" + key(resource)) || [] : []);
     }
-    plan(humanValues, matrix = null) {
+    plan(humanValues, matrix = null, actorWeight) {
       if (!this.enabled || !this.available) fail("Explicitly arm the validated pair before preparing writes.");
       if (this.pendingOperation) fail("Resolve the pending preview commit before preparing another write.");
       const human = core.validateHuman(humanValues);
       if (matrix && ["id", "sex", "family", "version"].some(name => matrix[name] !== core.getProfile(this.catalog, this.profileId)[name])) fail("Matrix belongs to a different bound human family.");
-      const result = matrix ? core.evaluateMatrix(matrix, human) : core.evaluate(this.catalog, this.profileId, human);
+      const result = matrix ? core.evaluateMatrix(matrix, human, actorWeight) : core.evaluate(this.catalog, this.profileId, human, actorWeight);
       const inputs = Object.create(null), outputs = Object.assign(Object.create(null), result.values);
       const loadedSources = new Map(Array.from(this.available.human, name => [core.providerIdentity(name), name]));
       const humanValuesByIdentity = new Map(Object.entries(human).map(([name, value]) => [core.providerIdentity(name), value]));
       for (const rule of result.profile.rules) {
-        const loaded = rule.source && loadedSources.get(core.providerIdentity(rule.source));
+        const loaded = rule.function !== "constant" && core.sourceKind(rule.source) === 0 && loadedSources.get(core.providerIdentity(rule.source));
         if (loaded) inputs[loaded] = humanValuesByIdentity.get(core.providerIdentity(rule.source)) ?? 0;
       }
       for (const [name, value] of Object.entries(human)) {

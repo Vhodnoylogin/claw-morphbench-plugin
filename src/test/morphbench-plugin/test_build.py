@@ -16,9 +16,13 @@ class BuildTests(unittest.TestCase):
 
     def test_current_canonical_profiles_are_pinned_and_ordered(self):
         catalog = builder.catalog_from_bytes(self.source)
-        self.assertEqual([profile["family"] for profile in catalog["profiles"]], ["3BA", "HIMBO", "CBBE"])
+        self.assertEqual([profile["family"] for profile in catalog["profiles"][:3]], ["3BA", "HIMBO", "CBBE"])
+        self.assertEqual({(profile["id"], profile["family"], profile["sex"], profile["version"])
+                          for profile in catalog["profiles"][3:]}, {
+            ("CLAW.VanillaMale.Weight1", "Vanilla", "male", "game-weight-v1"),
+            ("CLAW.VanillaFemale.Weight1", "Vanilla", "female", "game-weight-v1")})
         self.assertEqual(catalog["source"]["sha256"], builder.hashlib.sha256(self.source).hexdigest())
-        self.assertEqual(catalog["profiles"][0]["rules"][0]["source"], "Arms")
+        self.assertEqual(catalog["profiles"][0]["rules"][4]["source"], "Arms")
         self.assertGreater(sum(len(profile["rules"]) for profile in catalog["profiles"]), 200)
 
     def test_invalid_target_sex_family_and_duplicate_profile_are_rejected(self):
@@ -77,10 +81,10 @@ class BuildTests(unittest.TestCase):
 
     def test_function_parameters_and_constant_bias_are_preserved(self):
         source = self.source.replace(b'<Rule source="Arms"', b'<Rule function="power" exponent="3" source="Arms"', 1)
-        first = builder.catalog_from_bytes(source)["profiles"][0]["rules"][0]
+        first = builder.catalog_from_bytes(source)["profiles"][0]["rules"][4]
         self.assertEqual((first["function"], first["exponent"]), ("power", 3))
         source = self.source.replace(b'<Rule source="Arms"', b'<Rule function="constant" value="0.4" source=""', 1)
-        first = builder.catalog_from_bytes(source)["profiles"][0]["rules"][0]
+        first = builder.catalog_from_bytes(source)["profiles"][0]["rules"][4]
         self.assertEqual((first["source"], first["function"], first["value"]), ("", "constant", builder.float32("0.4")))
 
     def test_invalid_or_irrelevant_function_parameters_are_rejected(self):
@@ -147,6 +151,17 @@ class BuildTests(unittest.TestCase):
                 builder.catalog_from_bytes(self.sparse(rules))
         rules = '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="human" target="ear.size" gain="0" cap="1" />'
         self.assertEqual(len(builder.catalog_from_bytes(self.sparse(rules))["profiles"][0]["rules"]), 1)
+
+    def test_vanilla_family_supports_one_profile_per_sex_with_typed_weight_source(self):
+        male = '<Profile id="Male" family="Vanilla" version="game-weight-v1" sex="male" calibration="test"><Rule source="$actor.weight" target="Custom" gain="1" cap="1" /></Profile>'
+        female = male.replace('id="Male"', 'id="Female"').replace('sex="male"', 'sex="female"')
+        wrap = lambda body: ('<MorphLinkProfiles schemaVersion="1">' + body + '</MorphLinkProfiles>').encode()
+        result = builder.catalog_from_bytes(wrap(male + female))
+        self.assertEqual([(p["family"], p["sex"]) for p in result["profiles"]], [("Vanilla", "male"), ("Vanilla", "female")])
+        self.assertEqual(result["profiles"][0]["rules"][0]["source"], "$actor.weight")
+        for body in (male + male.replace('id="Male"', 'id="Second"'), male.replace('sex="male"', 'sex="other"')):
+            with self.assertRaisesRegex(ValueError, 'wrong-sex resource family'):
+                builder.catalog_from_bytes(wrap(body))
 
 
 if __name__ == "__main__":
