@@ -79,12 +79,12 @@
     ledger(role, resource = this.bindings && this.bindings[role]) {
       return new Set(resource ? this.owned.get(role + ":" + key(resource)) || [] : []);
     }
-    plan(humanValues, matrix = null, actorWeight) {
+    plan(humanValues, matrix = null, actorWeight, humanTraits) {
       if (!this.enabled || !this.available) fail("Explicitly arm the validated pair before preparing writes.");
       if (this.pendingOperation) fail("Resolve the pending preview commit before preparing another write.");
       const human = core.validateHuman(humanValues);
       if (matrix && ["id", "sex", "family", "version"].some(name => matrix[name] !== core.getProfile(this.catalog, this.profileId)[name])) fail("Matrix belongs to a different bound human family.");
-      const result = matrix ? core.evaluateMatrix(matrix, human, actorWeight) : core.evaluate(this.catalog, this.profileId, human, actorWeight);
+      const result = matrix ? core.evaluateMatrix(matrix, human, actorWeight, humanTraits) : core.evaluate(this.catalog, this.profileId, human, actorWeight, humanTraits);
       const inputs = Object.create(null), outputs = Object.assign(Object.create(null), result.values);
       const loadedSources = new Map(Array.from(this.available.human, name => [core.providerIdentity(name), name]));
       const humanValuesByIdentity = new Map(Object.entries(human).map(([name, value]) => [core.providerIdentity(name), value]));

@@ -202,7 +202,7 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
                "-Wl,--no-entry", "-Wl,--export-memory", "-Wl,--export=__heap_base",
                *["-Wl,--export="+name for name in ("claw_matrix_transform", "claw_matrix_contribution", "claw_matrix_clamp", "claw_matrix_evaluate",
                                                     "claw_matrix_gain_active", "claw_matrix_gain_epsilon",
-                                                    "claw_matrix_source_kind", "claw_matrix_source_value_valid")],
+                                                    "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral")],
                str(shared / "MatrixKernel.cpp"), "-o", str(wasm)]
     subprocess.run(command, check=True, capture_output=True, text=True)
     for name, data in sources.items():

@@ -10,7 +10,7 @@
     throw new Error("CLAW shared computation kernel could not start. This Morphbench host must permit packaged WebAssembly. " + error.message);
   }
   const exports = instance.exports;
-  if (["claw_matrix_gain_active", "claw_matrix_gain_epsilon", "claw_matrix_source_kind", "claw_matrix_source_value_valid"].some(name => typeof exports[name] !== "function")) {
+  if (["claw_matrix_gain_active", "claw_matrix_gain_epsilon", "claw_matrix_source_kind", "claw_matrix_source_value_valid", "claw_matrix_source_neutral"].some(name => typeof exports[name] !== "function")) {
     throw new Error("CLAW sparse matrix kernel exports are unavailable.");
   }
   const functions = Object.freeze({ linear: 0, positive: 1, negative: 2, smoothstep: 3, power: 4, constant: 5 });
@@ -59,6 +59,7 @@
     };
   }
   global.CLAWMatrixKernel = Object.freeze({ evaluate, sourceKind,
+    sourceNeutral: kind => exports.claw_matrix_source_neutral(kind),
     sourceValueValid: (kind, value) => Boolean(exports.claw_matrix_source_value_valid(kind, value)),
     gainActive: gain => Boolean(exports.claw_matrix_gain_active(gain)),
     gainEpsilon: exports.claw_matrix_gain_epsilon(), sourceSha256: "__CLAW_SOURCE_SHA256__", wasmSha256: "__CLAW_WASM_SHA256__", abi: 1 });

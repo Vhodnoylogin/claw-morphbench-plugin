@@ -86,7 +86,8 @@ test("sparse preview leaves unwritten morphs alone and clears explicitly acknowl
   await writeAtNeutralWeight(mock.sdk, catalog, male, {}, false, ["CLAWTorsoNeckGirth", "CLAWTorsoBackWide"]);
   assert.equal(mock.values.CLAWTorsoNeckGirth, 0);
   assert.equal(mock.values.CLAWTorsoBackWide, 0);
-  assert.equal(mock.values.CLAWHeadEarSize, .73);
+  assert.equal(mock.values.CLAWHeadEarSize, 0); // Newly owned stature target; absent human input is neutral.
+  assert.equal(mock.values.unrelated, -.2);
 });
 
 test("input permits finite extrapolation/negative values and reports unmapped aggregate names", () => {
@@ -122,8 +123,8 @@ test("apply validates the loaded model/morphs then makes one merge batch, preser
   const response = await writeAtNeutralWeight(mock.sdk, catalog, male, { PecsMass: .25, PecsSize: .5 }, false, []);
   assert.deepEqual(mock.calls.map(call => call.method), ["scene.get", "morphs.get", "morphs.set"]);
   approximate(mock.values[chest], .3);
-  assert.equal(mock.values.CLAWHeadEarSize, .73);
-  assert.equal(mock.values.CLAWTailLength, .4);
+  assert.equal(mock.values.CLAWHeadEarSize, 0);
+  assert.equal(mock.values.CLAWTailLength, 0);
   assert.equal(mock.values.unrelated, -.2);
   assert.equal(mock.values[belly], 0);
   assert.equal(Object.keys(response.values).length, mock.names.length);
@@ -153,8 +154,9 @@ test("reset writes only linked body zeros, including a previously written female
   assert.equal(writes.length, 1);
   assert.ok(Object.values(writes[0].params.values).every(value => value === 0));
   assert.equal(mock.values.CLAWTorsoBreastSize, 0);
-  assert.equal(mock.values.CLAWHeadEarSize, .73);
-  assert.equal(mock.values.CLAWTailLength, .4);
+  assert.equal(mock.values.CLAWHeadEarSize, 0);
+  assert.equal(mock.values.CLAWTailLength, 0);
+  assert.equal(mock.values.unrelated, -.2);
   await assert.rejects(writeAtNeutralWeight(mock.sdk, catalog, male, {}, true, ["__proto__"]), /Invalid previously/);
 });
 

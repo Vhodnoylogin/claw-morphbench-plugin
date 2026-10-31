@@ -34,7 +34,7 @@
   }
   function kernel() {
     const value = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
-    if (!value || ["gainActive", "sourceKind", "sourceValueValid"].some(name => typeof value[name] !== "function")) fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
+    if (!value || ["gainActive", "sourceKind", "sourceValueValid", "sourceNeutral"].some(name => typeof value[name] !== "function")) fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
     return value;
   }
   function validateHuman(values) {
@@ -58,6 +58,18 @@
     return weight;
   }
   function sourceKind(name) { return kernel().sourceKind(name); }
+  function validateTraits(values = {}) {
+    if (!object(values)) fail("Human traits must be a separate object of captured or manually declared actor traits.");
+    validateMorphNames(Object.keys(values));
+    const result = Object.create(null);
+    for (const [name, value] of Object.entries(values)) {
+      const kind = sourceKind(name);
+      if (kind !== 2 && kind !== 3) fail("Unsupported human appearance trait: " + name);
+      result[name] = finiteFloat(value, name);
+      if (!kernel().sourceValueValid(kind, result[name])) fail("Invalid human appearance trait: " + name);
+    }
+    return result;
+  }
   function matrixTargets(matrix) { return [...new Set(validateMatrix(matrix).rules.map(rule => rule.target))]; }
   function validateMatrix(profile) {
     if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "HIMBO", "Vanilla"].includes(profile.family) ||
@@ -150,8 +162,8 @@
     return lines.join("\n") + "\n";
   }
 
-  function evaluate(catalog, profileId, humanValues, actorWeight) {
-    return evaluateMatrix(getProfile(catalog, profileId), humanValues, actorWeight);
+  function evaluate(catalog, profileId, humanValues, actorWeight, humanTraits) {
+    return evaluateMatrix(getProfile(catalog, profileId), humanValues, actorWeight, humanTraits);
   }
 
   function exportCatalog(catalog, matrix, femaleFamily, maleFamily = "HIMBO") {
@@ -171,8 +183,9 @@
     return '<MorphLinkProfiles schemaVersion="1">\n  <Defaults male="' + male.id + '" female="' + female.id + '" />\n' + body + '\n</MorphLinkProfiles>\n';
   }
 
-  function evaluateMatrix(matrix, humanValues, actorWeight) {
+  function evaluateMatrix(matrix, humanValues, actorWeight, humanTraits) {
     const profile = validateMatrix(matrix), human = validateHuman(humanValues);
+    const traits = validateTraits(humanTraits);
     const weight = actorWeight === undefined ? undefined : validateActorWeight(actorWeight);
     if (weight === undefined && profile.rules.some(rule => rule.function !== "constant" && kernel().sourceKind(rule.source) === 1)) fail("An explicit normalized actor weight is required by this matrix.");
     const humanByIdentity = new Map(Object.entries(human).map(([name, value]) => [providerIdentity(name), value]));
@@ -183,7 +196,9 @@
     const ordered = Array.from(targets.keys());
     const numericRules = profile.rules.map(rule => ({ ...rule,
       target: ordered.indexOf(rule.target),
-      input: rule.function === "constant" ? 0 : kernel().sourceKind(rule.source) === 1 ? weight : (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
+      input: rule.function === "constant" ? 0 : kernel().sourceKind(rule.source) === 1 ? weight :
+        kernel().sourceKind(rule.source) >= 2 ? (traits[rule.source] ?? kernel().sourceNeutral(kernel().sourceKind(rule.source))) :
+          (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
     const numeric = kernel().evaluate(numericRules, ordered.length);
     profile.rules.forEach((rule, index) => {
       const row = targets.get(rule.target);
@@ -198,7 +213,8 @@
       row.value = numeric.values[index]; values[target] = row.value;
     });
     const rows = Array.from(targets.values()).sort((a, b) => a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
-    return { profile: profile, rows: rows, values: values, actorWeight: weight,
+    return { profile: profile, rows: rows, values: values, actorWeight: weight, humanTraits: traits,
+      unavailableTraits: [...new Set(profile.rules.filter(rule => rule.function !== "constant" && sourceKind(rule.source) >= 2 && !own(traits, rule.source)).map(rule => rule.source))],
       unmapped: Object.keys(human).filter(name => !mappedSources.has(providerIdentity(name))).sort() };
   }
 
@@ -213,8 +229,8 @@
     return scene.names.nif;
   }
 
-  async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten, actorWeight) {
-    const result = evaluate(catalog, profileId, human, actorWeight);
+  async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten, actorWeight, humanTraits) {
+    const result = evaluate(catalog, profileId, human, actorWeight, humanTraits);
     const values = Object.assign(Object.create(null), result.values);
     for (const target of previouslyWritten || []) {
       if (!morphIdentifier(target)) fail("Invalid previously written target.");
@@ -231,7 +247,7 @@
     return { result: result, model: model, values: values, response: response };
   }
 
-  const api = Object.freeze({ parseHuman, validateHuman, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
+  const api = Object.freeze({ parseHuman, validateHuman, validateTraits, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWLink = api;
 })(typeof window !== "undefined" ? window : globalThis);

@@ -1,12 +1,14 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.4**, the generic sparse-matrix and actor-weight candidate.
+This development branch builds **0.4.0-dev.5**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
-it does not introduce new body, head, colour or physics deformations.
-Dev.4 follows the game adapter's sex/source-capture fixes at CLAW `57bc951`;
-the portable evaluator and profile XML bytes are unchanged from dev.3.
+it now reads explicit human FaceGen/stature observations separately from body TRI
+coefficients. Dev.5 pins CLAW `220e2df`: the native/WASM kernel shares reserved
+source validation and unavailable-input neutrals, and every family includes the
+authored head/ear/tail/claw links. No model assets, colour renderer or physics
+simulation are bundled with this plugin.
 
 **Publication status, owner report on 31 October 2026:** the Nexus page
 [197517](https://www.nexusmods.com/skyrimspecialedition/mods/197517) was published
@@ -44,6 +46,10 @@ settings, opened and applied Vanilla female and HIMBO male pairs. Both exported
 vectors match the native CLI bit-for-bit; a browser-exported pair of Vanilla
 matrices passes native parsing. This does not certify Launcher installation,
 its native window, Nexus availability or game behavior.
+Dev.5 adds 138 passing offline checks, including 23 checks against that released
+0.8.6 SDK with the packaged plugin scripts, and 50 new native/WASM human-trait
+parity cases. These checks provide no new browser-rendered acceptance; the
+historical dev.4 browser observations do not qualify the revised candidate.
 
 Recorded local 0.3 browser checks on 31 October opened male/female pairs, applied real
 thin/muscular vectors, rotated both directions, downloaded an 18,837-byte matrix,
@@ -89,7 +95,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.4`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.5`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
@@ -111,7 +117,8 @@ The same scalar is available to mixed HIMBO/CBBE/3BA matrices when explicitly
 referenced. A required scalar cannot be omitted or silently replaced with zero.
 All five bundled canonical matrices reference it. The HIMBO/CBBE/3BA profiles
 combine human morphs with an actor-weight contribution whose neutral reference
-is 0.5; Vanilla profiles rely on weight alone.
+is 0.5; Vanilla body variation relies on weight, with the separate human-trait
+rules described below.
 It never multiplies already-effective human coefficients, writes a TRI slider,
 or interpolates the fixed human/wolf NIF geometry. JSON fixture envelopes can
 supply explicit `actorWeight`; the human `humanValues` map cannot contain actor
@@ -120,6 +127,28 @@ When reconstructing one NPC from a BodySlide preset, set its coefficient weight
 and actor weight to the same normalized value. Already-effective JSON is not
 interpolated again. For a Vanilla NIF without TRI controls, use an empty human
 vector `{}`; family changes preserve the supplied vector rather than discarding it.
+
+**Human face and stature** are a separate `humanTraits` object. The supported
+sources are `$human.face.noseLength`, `$human.face.jawWidth`,
+`$human.face.jawForward`, `$human.face.chinWidth`, `$human.face.chinForward`
+and `$human.height`. Native capture reads vanilla FaceGen record scalars and NPC
+NAM6 times human racial height; custom RaceMenu face values, sculpt geometry,
+reference scale and node transforms are not those channels. The
+[native source contract](https://github.com/Vhodnoylogin/claw/blob/220e2df50a0b14656fc410f75b0dacd7f650f87f/src/main/docs/human-head-traits.md)
+defines the exact reads and authored projection limits.
+
+Use the numeric controls or JSON to supply captured values or declare preview
+values. Each checkbox controls availability; a checked zero is an explicit
+neutral observation/declaration, while an unchecked field remains unavailable.
+The shared C++ kernel supplies arithmetic neutral face 0 and height 1 for missing
+traits. The UI and coefficient snapshot list missing channels explicitly.
+Import envelopes can contain `humanValues`, `actorWeight` and `humanTraits`.
+The human body morph map rejects both reserved namespaces. Neither scalar nor
+trait values are ever sent to a human TRI setter, even if a loaded TRI lists
+their literal names. The body-only human panel does not render a FaceGen head or
+change racial height. Wolf outputs use the supplied traits through the same
+compiled matrix as native; head/body attachment and rendered quality still need
+their own acceptance.
 
 ## Wolf presets are coefficient and function matrices
 
@@ -152,7 +181,10 @@ details show original input, transformed input, gain and contribution.
 **Export wolf preset JSON** preserves the complete matrix: profile ID, resource
 family and version, sex, calibration, ordered edges, gains, caps, functions and
 their parameters. The file envelope is
-`{schemaVersion:1,kind:"claw-wolf-matrix",profile:{...}}`. Import accepts this JSON
+`{schemaVersion:1,kind:"claw-wolf-matrix",profile:{...}}`. This preset preserves
+the conversion policy independently of actor inputs. Coefficient snapshot exports
+separately retain `humanValues`, `actorWeight`, `humanTraits` and
+`unavailableTraits`. Matrix import accepts the policy JSON
 or generated native `MorphLinkProfiles` XML, through a file or pasted text.
 XML keeps the native plain-ASCII/no-entity/no-declaration restriction; delimiter
 characters supported by JSON receive an XML export error. Select the matching
@@ -297,6 +329,7 @@ node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sdk
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/matrix.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>' '<external-real-pair-inputs>/fixtures-full-preset-reconstruction.json'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/sparse.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
 node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/weight.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
+node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/human-traits.test.cjs './target/plugin/catalog.json' '<native-claw-preset-tool.exe>' '<external-checks>'
 ```
 
 The builder reads the hash-pinned external `src/main/resources/profiles/MorphLinks.xml`,

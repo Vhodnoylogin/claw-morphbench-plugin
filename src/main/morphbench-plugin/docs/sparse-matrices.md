@@ -5,7 +5,9 @@ alternative JavaScript evaluation formula. Its browser bridge retains ABI 1 and
 the 28-byte rule layout. The shared `claw_matrix_gain_active` and
 `claw_matrix_gain_epsilon` exports define active gains for the plugin.
 `claw_matrix_source_kind` and `claw_matrix_source_value_valid` define reserved
-actor sources and their value domain, including the builder's final catalog gate.
+actor/human sources and their value domain, including the builder's final catalog
+gate. `claw_matrix_source_neutral` supplies unavailable human-channel arithmetic
+neutrals; JavaScript contains no alternative binding formula.
 
 ## Validation and omission order
 
@@ -95,7 +97,40 @@ profiles. This is a scalar conversion preview, not proof of game capture or fina
 visual differences between neutral weight geometry endpoints.
 All five current canonical profiles require an explicit actor weight. The three
 human-morph families add their weight contribution around neutral weight 0.5;
-the two Vanilla profiles derive their whole mapped variation from weight.
+the two Vanilla profiles derive their body variation from weight. Dev.5 appends
+the human-trait rules below to all five families.
+
+## Human-only FaceGen and stature observations
+
+`evaluateMatrix(profile, humanValues, actorWeight, humanTraits)` and the paired
+controller accept `humanTraits` separately from body TRI coefficients. The exact
+supported source names are `$human.face.noseLength`, `$human.face.jawWidth`,
+`$human.face.jawForward`, `$human.face.chinWidth`, `$human.face.chinForward`
+(shared kind 2) and `$human.height` (kind 3). Both reserved namespaces reject
+unknown/noncanonical names as sources and every reserved name as a target,
+including on omitted edges. Face values are signed finite float32 except the
+engine's default sentinel; height is a positive finite ratio. The shared C++
+exports enforce these domains.
+
+Object-key presence denotes availability: `{}` is unavailable; a present face 0
+or height 1 is explicitly available neutral data. Unavailable channels use
+`source_neutral(kind)` from WASM, face 0 and height 1. Evaluation returns the
+validated `humanTraits` object and `unavailableTraits` array. No missing entry is
+inserted into the available input map. This mirrors native arithmetic while
+preserving the distinction from observed neutral data. The plugin does not
+capture the game itself or invent provenance for manually supplied values.
+
+The UI's availability checkboxes/numeric fields and JSON input edit this separate
+object. An imported fixture envelope preserves it. A diagnostic coefficient
+snapshot exports it and the missing-channel array alongside the body/weight
+inputs. A wolf-matrix preset remains an actor-independent policy and exports its
+rules rather than freezing these inputs into a preset.
+
+Human models with zero TRI names remain valid for actor/human-scalar profiles.
+Reserved names returned by a host model are excluded from body controls and
+cannot satisfy an ordinary morph source or become a special human setter call.
+The body-only preview does not render FaceGen/sculpt or racial height. Canonical
+comparison receives the identical human-trait object as the edited matrix.
 
 ## Preset formats and installed configuration
 
@@ -110,7 +145,10 @@ exactly one male profile (HIMBO or Vanilla) and one female profile (CBBE, 3BA or
 Vanilla), with explicit defaults. It omits unselected families. An edited profile must
 be selected for export; the tool never silently replaces it with another family.
 
-This architecture supplies no new authored head, ear, tail, claw, hair/skin
-colour, breast or physics transformations. Such traits require authored resource
-fields and explicit mappings in later work. The 0.4 development candidate still
-requires its own browser/rendering and game acceptance.
+Dev.5 consumes the pinned native family mappings for muzzle shape and the
+explicit stature analogy for head/ear size, tail length and both claw lengths.
+It also consumes the revised breast gains for the larger v3 resource field.
+Actual target geometry must be present in the selected wolf NIF/TRI; this plugin
+does not bundle or generate it. Ear tilt, tail posture/fluff, colour and physics
+are not new preview simulations. This candidate still requires its own browser,
+rendering and game acceptance.

@@ -9,10 +9,12 @@
   let exportSnapshot = null, exportPage = 0;
   let downloadSupported = false;
   const sliderRows = []; let sliderPairKey = null;
+  const traitRows = []; let traitNamesKey = null;
   function status(message, error = false) { el("status").textContent = message; el("status").className = error ? "error" : ""; }
   function showError(error) { if (error.code !== "superseded") status((error.code ? error.code + ": " : "") + error.message, true); }
   function format(value) { return Number(value.toPrecision(9)).toString(); }
   function values() { return core.parseHuman(el("human").value); }
+  function humanTraits() { return core.validateTraits(JSON.parse(el("human-traits").value || "{}")); }
   function actorWeight() {
     if (!String(el("actor-weight").value).trim()) throw new Error("Enter an explicit normalized actor weight.");
     return core.validateActorWeight(Number(el("actor-weight").value));
@@ -25,7 +27,8 @@
     el("open-pair").disabled = !supported || busy || !el("human-model").value || !el("wolf-model").value;
     el("close-pair").disabled = !supported || busy || (!pair && !controller.failedCleanup.length);
     el("refresh-models").disabled = !supported || busy;
-    for (const id of ["profile", "human-model", "wolf-model", "import", "actor-weight"]) el(id).disabled = busy;
+    for (const id of ["profile", "human-model", "wolf-model", "import", "actor-weight", "human-traits"]) el(id).disabled = busy;
+    for (const row of traitRows) { row.available.disabled = busy; row.number.disabled = busy || !row.available.checked; }
     for (const id of ["matrix-import", "matrix-reset", "matrix-add", "matrix-constant"]) el(id).disabled = busy;
     el("geometry-read").disabled = !selectedPair || busy || !geometrySupported;
     el("geometry-export").disabled = !geometry;
@@ -33,8 +36,12 @@
   }
   function cell(row, value, tag) { const node = document.createElement(tag || "td"); node.textContent = value; row.appendChild(node); }
   function calculate() {
-    const vector = values(), weight = actorWeight(), result = core.evaluateMatrix(matrix, vector, weight);
-    el("profile-info").textContent = result.profile.id + " · " + result.profile.sex + " · " + result.profile.calibration;
+    const vector = values(), weight = actorWeight(), traits = humanTraits(), result = core.evaluateMatrix(matrix, vector, weight, traits);
+    renderTraits(traits);
+    el("human-traits-status").textContent = result.unavailableTraits.length ?
+      "Unavailable inputs use shared neutral arithmetic: " + result.unavailableTraits.join(", ") + ". These are not captured zeros." :
+      "Every human trait used by this matrix has an explicit value. Values entered here are preview declarations, not proof of game capture.";
+    el("profile-info").textContent = result.profile.id + " В· " + result.profile.sex + " В· " + result.profile.calibration;
     const nonzero = result.unmapped.filter(name => vector[name] !== 0);
     el("unmapped").textContent = nonzero.length ? "Human-only nonzero inputs, preserved in the human preview: " +
       nonzero.map(name => name + "=" + format(vector[name])).join(", ") : "No nonzero human-only inputs in this vector.";
@@ -47,7 +54,7 @@
       const details = document.createElement("details"), summary = document.createElement("summary");
       summary.textContent = data.target + " = " + format(data.value); details.appendChild(summary);
       const equation = document.createElement("p"); equation.textContent = data.contributions.length ?
-        "Raw sum " + format(data.rawSum) + " → clamp [0, 1] " + format(data.clamped) + " × cap " + format(data.cap) + " = " + format(data.value) :
+        "Raw sum " + format(data.rawSum) + " в†’ clamp [0, 1] " + format(data.clamped) + " Г— cap " + format(data.cap) + " = " + format(data.value) :
         "No source rules for this body target. Linked baseline is zero."; details.appendChild(equation);
       const table = document.createElement("table"), head = document.createElement("tr");
       ["Source", "Function", "Input", "Transformed", "Gain", "Contribution"].forEach(label => cell(head, label, "th")); table.appendChild(head);
@@ -56,7 +63,7 @@
         [contribution.input, contribution.transformed ?? contribution.input, contribution.gain, contribution.contribution].forEach(value => cell(row, format(value))); table.appendChild(row); }
       details.appendChild(table); el("results").appendChild(details);
     }
-    const canonical = core.evaluate(catalog, el("profile").value, vector, weight);
+    const canonical = core.evaluate(catalog, el("profile").value, vector, weight, traits);
     const comparison = input.compareWolf(result.values, reference || canonical.values);
     el("comparison-head").replaceChildren(); const heading = document.createElement("tr");
     ["Wolf target", "Calculated", reference ? "Reference snapshot" : "Canonical matrix", "Difference"].forEach(label => cell(heading, label, "th")); el("comparison-head").appendChild(heading);
@@ -65,9 +72,40 @@
       [data.value, data.reference, data.difference].forEach(value => cell(row, format(value))); el("comparison-rows").appendChild(row); }
     el("comparison-status").textContent = "Calculated minus " + (reference ? "reference coefficient snapshot (omitted targets = zero)" : "canonical matrix at the same human inputs") +
       ": maximum absolute difference " + format(comparison.maximum) + "; RMS " + format(comparison.rms) + ".";
-    el("matrix-status").textContent = (matrixEdited ? "Edited/imported wolf matrix" : "Canonical wolf matrix") + " · " + matrix.rules.length + " ordered sparse edges · " + matrix.id +
+    el("matrix-status").textContent = (matrixEdited ? "Edited/imported wolf matrix" : "Canonical wolf matrix") + " В· " + matrix.rules.length + " ordered sparse edges В· " + matrix.id +
       ". Zero/near-zero edges are omitted; linear is the default. Targets are checked against the selected model before writes. Coefficient snapshots are diagnostics.";
     return result;
+  }
+  function renderTraits(traits) {
+    const names = [...new Set([...matrix.rules.filter(rule => rule.function !== "constant" && core.sourceKind(rule.source) >= 2).map(rule => rule.source), ...Object.keys(traits)])].sort();
+    const key = JSON.stringify(names);
+    if (key !== traitNamesKey) {
+      traitNamesKey = key; traitRows.length = 0; el("human-trait-controls").replaceChildren();
+      for (const name of names) {
+        const row = document.createElement("label"); row.className = "morph-row";
+        const title = document.createElement("span"); title.textContent = name; row.appendChild(title);
+        const available = document.createElement("input"); available.type = "checkbox"; available.setAttribute("aria-label", name + " has an explicit value");
+        const number = document.createElement("input"); number.type = "number"; number.step = "any"; number.setAttribute("aria-label", name + " value");
+        const origin = document.createElement("small");
+        const change = () => { try {
+          const next = humanTraits();
+          if (available.checked) {
+            if (!String(number.value).trim()) throw new Error("Enter a finite human trait value.");
+            next[name] = Number(number.value);
+          } else delete next[name];
+          core.validateTraits(next); el("human-traits").value = JSON.stringify(next, null, 2); edited();
+        } catch (error) { try { renderTraits(humanTraits()); } catch (_) {} showError(error); } };
+        available.addEventListener("change", change); number.addEventListener("change", change);
+        row.appendChild(available); row.appendChild(number); row.appendChild(origin); el("human-trait-controls").appendChild(row);
+        traitRows.push({ name, available, number, origin });
+      }
+    }
+    for (const row of traitRows) {
+      row.available.checked = Object.hasOwn(traits, row.name);
+      row.number.value = format(row.available.checked ? traits[row.name] : window.CLAWMatrixKernel.sourceNeutral(core.sourceKind(row.name)));
+      row.number.disabled = busy || !row.available.checked;
+      row.origin.textContent = row.available.checked ? "Explicit preview value; verify imported provenance" : "Unavailable; checkbox declares a preview value";
+    }
   }
   function refreshSliderValues() {
     let vector; try { vector = values(); } catch (_) { return; }
@@ -81,7 +119,7 @@
   async function applyPair() {
     if (!controller || !controller.pair) return;
     const revision = ++inputRevision;
-    try { calculate(); const result = await controller.apply(values(), matrix, actorWeight());
+    try { calculate(); const result = await controller.apply(values(), matrix, actorWeight(), humanTraits());
       if (revision === inputRevision) status("Applied " + Object.keys(result.humanValues).length + " human inputs and " +
         Object.keys(result.wolfValues).length + " derived wolf targets. The host links rotation from either panel.");
     } catch (error) { showError(error); } buttons();
@@ -110,11 +148,11 @@
     }
     refreshSliderValues(); filterSliders();
     el("human-names").replaceChildren();
-    for (const name of [...pair.human.names.filter(name => core.sourceKind(name) === 0), "$actor.weight"]) { const option = document.createElement("option"); option.value = name; el("human-names").appendChild(option); }
+    for (const name of [...new Set([...pair.human.names.filter(name => core.sourceKind(name) === 0), "$actor.weight", ...traitRows.map(row => row.name)])]) { const option = document.createElement("option"); option.value = name; el("human-names").appendChild(option); }
   }
   function pairChanged(event) {
     const pair = controller && controller.pair;
-    el("pair-status").textContent = pair ? "Human: " + pair.human.name + " · Wolf: " + pair.wolf.name +
+    el("pair-status").textContent = pair ? "Human: " + pair.human.name + " В· Wolf: " + pair.wolf.name +
       ". Fixed selected NIFs: neutral geometry weight is not interpolated." : "No comparison pair is open.";
     if (event && event.error) showError(event.error);
     if (!pair) el("live").checked = false;
@@ -129,7 +167,7 @@
     const response = await controller.listModels();
     for (const id of ["human-model", "wolf-model"]) {
       const select = el(id), previous = select.value; select.replaceChildren();
-      const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Select the exact catalog resource…"; select.appendChild(empty);
+      const empty = document.createElement("option"); empty.value = ""; empty.textContent = "Select the exact catalog resourceвЂ¦"; select.appendChild(empty);
       for (const row of response.entries) { const option = document.createElement("option"); option.value = row.name; option.textContent = row.name; select.appendChild(option); }
       select.value = response.entries.some(row => row.name === previous) ? previous : "";
     }
@@ -214,7 +252,7 @@
         candidate.rules[index][rule.function === "power" ? "exponent" : "value"] = Number(parameter.value);
       })); addControl(row, parameter);
       const actions = document.createElement("div"); actions.className = "order-controls";
-      for (const [label, offset] of [["↑", -1], ["↓", 1], ["×", 0]]) {
+      for (const [label, offset] of [["в†‘", -1], ["в†“", 1], ["Г—", 0]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
         button.setAttribute("aria-label", (offset ? "Move edge " + (offset < 0 ? "up" : "down") : "Remove edge") + " " + (index + 1));
         button.disabled = offset ? index + offset < 0 || index + offset >= matrix.rules.length : false;
@@ -265,7 +303,7 @@
     el("export-previous").disabled = exportPage === 0;
     el("export-next").disabled = exportPage === count - 1;
     el("export-page-status").textContent = "Page " + (exportPage + 1) + " of " + count +
-      " · complete export: " + exportSnapshot.bytes + " UTF-8 bytes. All pages remain available; the host download includes every page.";
+      " В· complete export: " + exportSnapshot.bytes + " UTF-8 bytes. All pages remain available; the host download includes every page.";
   }
   function showExport(name, text, type = "application/json") {
     // Retain the immutable full text outside the DOM. Page boundaries keep UTF-8
@@ -309,7 +347,7 @@
   el("snapshot-clear").addEventListener("click", () => exportChecked(() => { reference = null; calculate(); }));
   el("snapshot-export").addEventListener("click", () => exportChecked(() => {
     const result = calculate(); showExport(matrix.id + ".wolf-coefficients.json", JSON.stringify({ schemaVersion: 1,
-      kind: "claw-wolf-coefficient-snapshot", profileId: matrix.id, wolfValues: result.values, humanValues: values(), actorWeight: actorWeight(),
+      kind: "claw-wolf-coefficient-snapshot", profileId: matrix.id, wolfValues: result.values, humanValues: values(), actorWeight: actorWeight(), humanTraits: humanTraits(), unavailableTraits: result.unavailableTraits,
       note: "Diagnostic coefficients only. Import/export the wolf matrix preset to preserve conversion functions." }, null, 2));
   }));
   el("export-select").addEventListener("click", () => { el("export-text").focus(); el("export-text").select(); });
@@ -348,7 +386,7 @@
   el("geometry-shape").addEventListener("change", () => { el("geometry-page").value = "0"; renderGeometry(); });
   el("geometry-page").addEventListener("change", renderGeometry);
   el("geometry-read").addEventListener("click", async () => {
-    busy = true; buttons(); status("Reading every shape's current and initial vertex positions in both previews…");
+    busy = true; buttons(); status("Reading every shape's current and initial vertex positions in both previewsвЂ¦");
     try { geometry = await controller.readGeometry(); el("geometry-shape").replaceChildren();
       geometryShapes().forEach((entry, index) => { const option = document.createElement("option"); option.value = String(index);
         option.textContent = entry.role + " / " + entry.shape.name + " (" + entry.shape.vertexCount + " vertices)"; el("geometry-shape").appendChild(option); });
@@ -360,6 +398,7 @@
   el("evaluate").addEventListener("click", () => { try { calculate(); status("Calculated. No preview changed."); } catch (error) { showError(error); } });
   el("profile").addEventListener("change", () => { ++inputRevision; return profileChanged(); });
   el("human").addEventListener("input", () => { provenance = Object.create(null); edited(); });
+  el("human-traits").addEventListener("input", () => edited());
   el("actor-weight").addEventListener("change", () => {
     el("actor-weight-provenance").textContent = "Manually edited preview actor weight; not a measured game value. Fixed NIF neutral geometry remains unchanged.";
     edited();
@@ -371,13 +410,13 @@
   el("refresh-models").addEventListener("click", () => refreshModels().catch(showError));
   el("open-pair").addEventListener("click", async () => {
     busy = true; buttons(); el("live").checked = false;
-    status("Opening the selected human and wolf resources…");
+    status("Opening the selected human and wolf resourcesвЂ¦");
     try { await controller.open(el("profile").value, el("human-model").value, el("wolf-model").value, matrix);
       status("Opened independent human and wolf panels. Rotate either one; apply the shared human vector when ready.");
     } catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });
   el("close-pair").addEventListener("click", async () => {
-    busy = true; buttons(); status("Closing this plugin's comparison previews…"); try { await controller.close(); status("Closed this plugin's comparison previews."); }
+    busy = true; buttons(); status("Closing this plugin's comparison previewsвЂ¦"); try { await controller.close(); status("Closed this plugin's comparison previews."); }
     catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });
   el("apply").addEventListener("click", applyPair);
@@ -403,13 +442,14 @@
       if (file.name && file.name.toLowerCase().endsWith(".xml")) {
         presets = input.parseXML(text); el("preset").replaceChildren();
         presets.forEach((preset, index) => { const option = document.createElement("option"); option.value = String(index);
-          option.textContent = preset.name + " · " + preset.set; el("preset").appendChild(option); });
+          option.textContent = preset.name + " В· " + preset.set; el("preset").appendChild(option); });
         el("preset-controls").hidden = false; loadPreset();
       } else {
         const parsed = input.parseJSON(text);
         if (parsed.profileId) { core.getProfile(catalog, parsed.profileId); if (parsed.profileId !== el("profile").value) {
           el("profile").value = parsed.profileId; await profileChanged(); } }
         if (importRevision !== inputRevision) return;
+        el("human-traits").value = JSON.stringify(parsed.humanTraits || {}, null, 2);
         provenance = parsed.provenance; inputLabel = parsed.label; el("human").value = JSON.stringify(parsed.values, null, 2);
         if (parsed.actorWeight !== undefined) {
           el("actor-weight").value = String(parsed.actorWeight);

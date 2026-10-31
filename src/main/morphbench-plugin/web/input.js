@@ -51,6 +51,7 @@
     }
     return { values, provenance, profileId: envelope && typeof parsed.profileId === "string" ? parsed.profileId : null,
       actorWeight: envelope && Object.hasOwn(parsed, "actorWeight") ? core.validateActorWeight(parsed.actorWeight) : undefined,
+      humanTraits: envelope && Object.hasOwn(parsed, "humanTraits") ? core.validateTraits(parsed.humanTraits) : {},
       label: envelope && typeof parsed.sourceMode === "string" ? parsed.sourceMode : "Imported coefficient vector",
       completeness: envelope && object(parsed.runtimeObservationCompleteness) ? parsed.runtimeObservationCompleteness : null };
   }

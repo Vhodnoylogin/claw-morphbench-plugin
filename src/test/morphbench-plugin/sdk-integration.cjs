@@ -34,7 +34,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
   const profile = catalog.profiles.find(item => item.family === "3BA");
   const humanNames = humanNamesOverride || (realRoot ? JSON.parse(fs.readFileSync(path.join(realRoot,"resource-name-audit.json"),"utf8"))[0].morphNames :
     [...new Set([...profile.rules.filter(rule => rule.source && core.sourceKind(rule.source) === 0).map(rule => rule.source), "Butt", "BigButt", "MuscleAbs", "HumanOther"])]);
-  const wolfNames = wolfNamesOverride || core.matrixTargets(profile).filter(name => name !== missing).concat(["CLAWHeadEarSize", "CLAWTailLength"]);
+  const wolfNames = [...new Set(wolfNamesOverride || core.matrixTargets(profile).filter(name => name !== missing).concat(["Unowned.WolfControl"]))];
   const legacyValues = { LegacyMain: .33 };
   const geometryVertices = geometryVertexCount === 3 ? [1, 2, 3, -1, -2, -3, .5, .5, .5] :
     Array.from({ length: geometryVertexCount * 3 }, (_, index) => (index % 997) / 997 - .5);
@@ -52,7 +52,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
         else if (method === "exports.prepare") { assert.equal(hostExports, true); result = { prepared: true, filename: params.filename }; }
         else if (method === "models.list") result = { root: "isolated", entries: ["human.nif", "wolf.nif"].map(name => ({ name, nif: name, tri: name + ".tri" })) };
         else if (method === "previews.create") { const preview = "opaque:" + (++serial), human = params.name === "human.nif";
-          previews.set(preview, { name: params.name, names: human ? humanNames : wolfNames, values: human ? {} : { CLAWHeadEarSize: .6, CLAWTailLength: .8 } }); result = { preview, name: params.name }; }
+          previews.set(preview, { name: params.name, names: human ? humanNames : wolfNames, values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
         else if (method === "previews.link") { assert.deepEqual(JSON.parse(JSON.stringify(params)), { previews: ["opaque:1", "opaque:2"], properties: ["orientation"] }); result = params; }
         else {
           const preview = previews.get(params.preview); assert.ok(preview, "Only a live explicit scoped preview may be targeted.");
@@ -155,7 +155,8 @@ test("actual SDK connects paired UI, preserves human-only values and derives wol
   await bench.element("apply").fire("click");
   assert.equal(bench.previews.get("opaque:1").values.Butt, -.5); assert.equal(bench.previews.get("opaque:1").values.BigButt, -.25);
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound, 1);
-  assert.equal(bench.previews.get("opaque:2").values.CLAWHeadEarSize, .6);
+  assert.equal(bench.previews.get("opaque:2").values.CLAWHeadEarSize, 0);
+  assert.equal(bench.previews.get("opaque:2").values["Unowned.WolfControl"], .4);
   assert.match(bench.element("unmapped").textContent, /Butt=-0.5/);
   assert.deepEqual(bench.legacyValues, { LegacyMain: .33 });
   assert.ok(!bench.calls.some(call => ["models.open", "morphs.set", "morphs.reset", "view.set", "previews.view.set"].includes(call.method)));
@@ -386,4 +387,36 @@ for (const hostExports of [true, false]) test("large geometry export pages retai
   } else assert.equal(bench.calls.filter(call => call.method === "exports.prepare").length, 0);
   bench.element("export-page").value = "1"; await bench.element("export-go").fire("click");
   assert.equal(bench.element("export-text").value, pages[0]);
+});
+
+test("actual released SDK keeps explicit human traits outside body controls and exports their availability",async()=>{
+  const profile=catalog.profiles.find(p=>p.family==="Vanilla"&&p.sex==="female");
+  const traits={"$human.height":1.125,"$human.face.noseLength":Math.fround(.4),"$human.face.jawWidth":0};
+  const bench=harness({humanNamesOverride:["$actor.weight",...Object.keys(traits)],wolfNamesOverride:core.matrixTargets(profile)});
+  await settle();bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
+  assert.equal(bench.element("shared-sliders").children.length,0);
+  assert.equal(bench.element("human-trait-controls").children.length,6);
+  assert.ok(bench.element("human-trait-controls").children.every(row=>row.children[1].checked===false));
+  assert.match(bench.element("human-traits-status").textContent,/Unavailable inputs/);
+  bench.element("import").files=[{name:"human-observation.json",text:async()=>JSON.stringify({humanValues:{},actorWeight:.5,humanTraits:traits})}];
+  await bench.element("import").fire("change");
+  assert.deepEqual(JSON.parse(bench.element("human-traits").value),traits);
+  assert.match(bench.element("comparison-status").textContent,/maximum absolute difference 0; RMS 0/);
+  const rows=bench.element("human-trait-controls").children;
+  const width=rows.find(row=>row.children[0].textContent==="$human.face.jawWidth");
+  assert.equal(width.children[1].checked,true);assert.equal(width.children[2].value,"0");
+  const height=rows.find(row=>row.children[0].textContent==="$human.height");
+  height.children[2].value="1.2";await height.children[2].fire("change");
+  assert.equal(Math.fround(JSON.parse(bench.element("human-traits").value)["$human.height"]),Math.fround(1.2));
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  await bench.element("apply").fire("click");
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");assert.equal(writes.length,1);assert.equal(writes[0].params.preview,"opaque:2");
+  assert.equal(Object.keys(bench.previews.get("opaque:1").values).length,0);
+  assert.ok(Object.keys(writes[0].params.values).every(name=>core.sourceKind(name)===0));
+  await bench.element("snapshot-export").fire("click");
+  const exported=JSON.parse(bench.element("export-text").value);assert.equal(exported.humanTraits["$human.face.jawWidth"],0);
+  assert.equal(exported.unavailableTraits.length,3);assert.equal(exported.humanTraits["$human.height"],Math.fround(1.2));
+  height.children[1].checked=false;await height.children[1].fire("change");
+  assert.equal(Object.hasOwn(JSON.parse(bench.element("human-traits").value),"$human.height"),false);
+  assert.equal(height.children[2].disabled,true);assert.match(bench.element("human-traits-status").textContent,/\$human.height/);
 });

@@ -19,7 +19,7 @@ function fixture() {
   state.bind(female, bindings);
   const humanNames = [...new Set(catalog.profiles.flatMap(profile => profile.rules.filter(rule => rule.source && core.sourceKind(rule.source) === 0).map(rule => rule.source))), "HumanOther"];
   const snapshots = { human: { binding: bindings.human, names: humanNames },
-    wolf: { binding: bindings.wolf, names: [...Object.keys(core.evaluate(catalog, female, {}, .5).values), "CLAWHeadEarSize", "CLAWTailLength"] } };
+    wolf: { binding: bindings.wolf, names: [...new Set([...Object.keys(core.evaluate(catalog, female, {}, .5).values), "Unowned.WolfControl"])] } };
   state.arm(snapshots);
   return { state, bindings, snapshots };
 }
@@ -33,8 +33,9 @@ test("immutable pair plans keep one human vector and the unchanged exact float32
   assert.equal(operation.values.human.HumanOther, -.25);
   assert.deepEqual(operation.values.wolf, expected);
   assert.equal(operation.values.wolf.CLAWTorsoBellyRound, 1);
-  assert.equal(Object.hasOwn(operation.values.wolf, "CLAWHeadEarSize"), false);
-  assert.equal(Object.hasOwn(operation.values.wolf, "CLAWTailLength"), false);
+  assert.equal(operation.values.wolf.CLAWHeadEarSize, 0);
+  assert.equal(operation.values.wolf.CLAWTailLength, 0);
+  assert.equal(Object.hasOwn(operation.values.wolf, "Unowned.WolfControl"), false);
   assert.ok(Object.isFrozen(operation.values.human));
   assert.throws(() => { operation.bindings.wolf.id = "other"; }, TypeError);
 });
@@ -89,7 +90,8 @@ test("family change zeroes only acknowledged wolf outputs, leaves human controls
   assert.deepEqual(Object.keys(cleanup.values.wolf).sort(), Object.keys(accepted.values.wolf).sort());
   assert.deepEqual(cleanup.values.human, {});
   assert.ok(Object.values(cleanup.values.wolf).every(value => value === 0));
-  assert.equal(Object.hasOwn(cleanup.values.wolf, "CLAWHeadEarSize"), false);
+  assert.equal(cleanup.values.wolf.CLAWHeadEarSize, 0);
+  assert.equal(Object.hasOwn(cleanup.values.wolf, "Unowned.WolfControl"), false);
   state.acknowledge(cleanup, receipt(cleanup));
   assert.equal(state.ledger("wolf").size, 0);
   const maleCleanup = state.changeProfile(male);
