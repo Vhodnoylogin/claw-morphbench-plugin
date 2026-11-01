@@ -68,6 +68,53 @@ async function opened(options = {}) {
   return { ...fake, controller, observations };
 }
 
+test("confirmed close retires the applied morph ledger across repeated pair lifecycles", async () => {
+  const f=host(),c=new PreviewController(f.sdk,catalog);
+  for(let round=0;round<10;round++) {
+    await c.open("female.3BA","human.nif","wolf.nif");
+    await c.apply({Belly:.7},null,.5,{});
+    const bindings=c._state.snapshot().bindings;
+    assert.ok(c._state.ledger("human",bindings.human).size>0);
+    assert.ok(c._state.ledger("wolf",bindings.wolf).size>0);
+    await c.close();
+    assert.equal(c._state.ledger("human",bindings.human).size,0);
+    assert.equal(c._state.ledger("wolf",bindings.wolf).size,0);
+    assert.equal(c._state.owned.size,0);
+    assert.equal(c._owned.size,0);
+  }
+  assert.deepEqual([...f.previews.keys()],["third-party"]);
+});
+
+test("failed close retains only its role's ledger until a successful retry", async () => {
+  let failClose=false,human;
+  const f=await opened({before(method,params) {
+    if(failClose&&method==="previews.close"&&params.preview===human) throw new Error("Retriable close failure");
+  }});
+  await f.controller.apply({Belly:.7},null,.5,{});
+  const bindings=f.controller._state.snapshot().bindings;human=bindings.human.id;failClose=true;
+  await assert.rejects(f.controller.close(),{code:"cleanupFailed"});
+  assert.ok(f.controller._state.ledger("human",bindings.human).size>0);
+  assert.equal(f.controller._state.ledger("wolf",bindings.wolf).size,0);
+  assert.equal(f.controller.failedCleanup.length,1);
+  failClose=false;await f.controller.close();
+  assert.equal(f.controller._state.owned.size,0);
+  assert.equal(f.controller.failedCleanup.length,0);
+});
+
+test("unknownPreview keeps existing terminal handle semantics without claiming an acknowledged ledger retirement", async () => {
+  let unknownClose=false,human;
+  const f=await opened({before(method,params) {
+    if(unknownClose&&method==="previews.close"&&params.preview===human) throw Object.assign(new Error("Expired handle"),{code:"unknownPreview"});
+  }});
+  await f.controller.apply({Belly:.7},null,.5,{});
+  const bindings=f.controller._state.snapshot().bindings;human=bindings.human.id;unknownClose=true;
+  await f.controller.close();
+  assert.equal(f.controller._owned.size,0);
+  assert.equal(f.controller.failedCleanup.length,0);
+  assert.ok(f.controller._state.ledger("human",bindings.human).size>0);
+  assert.equal(f.controller._state.ledger("wolf",bindings.wolf).size,0);
+});
+
 test("capability discovery keeps stable v1 hosts unavailable without creating anything", async () => {
   const f = host({ capabilities: ["models.list", "morphs.get", "morphs.set"] });
   const c = new PreviewController(f.sdk, catalog);

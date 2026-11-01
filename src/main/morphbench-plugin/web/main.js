@@ -441,7 +441,7 @@
   });
   el("apply").addEventListener("click", applyPair);
   el("matrix-apply").addEventListener("click", applyPair);
-  el("reset").addEventListener("click", async () => { el("live").checked = false; matrixPending = true;
+  el("reset").addEventListener("click", async () => { ++inputRevision; el("live").checked = false; matrixPending = true;
     try { await controller.zeroWolf(); status("Zeroed only acknowledged wolf outputs. Human controls are retained."); }
     catch (error) { showError(error); } buttons(); });
   el("live").addEventListener("change", () => { buttons(); if (el("live").checked) return applyPair(); });

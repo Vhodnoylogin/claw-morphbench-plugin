@@ -473,6 +473,21 @@ test("matrix changes visibly pause live human edits until explicit application",
   assert.match(bench.element("matrix-apply-status").textContent,/current matrix has been applied/);
 });
 
+test("Reset wolf revokes an earlier live apply's UI receipt while the queued zero still clears the model",async()=>{
+  const bench=harness();await open(bench);
+  bench.element("human").value='{"Belly":0.7}';
+  const applying=bench.element("human").fire("input");
+  const zeroing=bench.element("reset").fire("click");
+  await Promise.all([applying,zeroing]);
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,0);
+  assert.equal(bench.element("live").checked,false);
+  assert.match(bench.element("status").textContent,/Zeroed only acknowledged wolf outputs/);
+  assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
+  await bench.element("matrix-apply").fire("click");
+  assert.ok(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound>0);
+  assert.match(bench.element("matrix-apply-status").textContent,/current matrix has been applied/);
+});
+
 test("invalid live input never writes and a partial live update closes its owned pair",async()=>{
   const bench=harness({failWolfSet:true});await open(bench);
   bench.element("human").value='{"UnknownHuman":1}';await bench.element("human").fire("input");

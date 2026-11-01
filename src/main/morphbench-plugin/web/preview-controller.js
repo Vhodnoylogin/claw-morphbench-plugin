@@ -181,6 +181,7 @@
         try {
           const result = await this.sdk.request("previews.close", { preview: item.preview });
           if (!result || result.closed !== true) throw failure("invalidResponse", "The host did not confirm preview closure.");
+          this._state.retireClosedPreview(item.preview);
           this._owned.delete(item.preview);
         } catch (error) {
           if (error.code === "unknownPreview") this._owned.delete(item.preview);

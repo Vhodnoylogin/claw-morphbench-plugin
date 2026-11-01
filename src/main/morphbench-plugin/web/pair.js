@@ -79,6 +79,16 @@
     ledger(role, resource = this.bindings && this.bindings[role]) {
       return new Set(resource ? this.owned.get(role + ":" + key(resource)) || [] : []);
     }
+    retireClosedPreview(preview) {
+      // The controller calls this only after an explicit closed:true receipt.
+      // Failed/unknown closure retains the ledger needed for recovery. Bindings
+      // survive invalidate(), so cleanup can retire each role independently.
+      if (!token(preview)) fail("An acknowledged closed preview identity is required.");
+      for (const role of roles) {
+        const resource = this.bindings && this.bindings[role];
+        if (resource && resource.id === preview) this.owned.delete(role + ":" + key(resource));
+      }
+    }
     plan(humanValues, matrix = null, actorWeight, humanTraits) {
       if (!this.enabled || !this.available) fail("Explicitly arm the validated pair before preparing writes.");
       if (this.pendingOperation) fail("Resolve the pending preview commit before preparing another write.");
