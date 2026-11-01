@@ -1,0 +1,1 @@
+Developer plugin for Morphbench. Compare human and werewolf bodies and edit conversion matrices. Install through Morphbench's plugin manager.

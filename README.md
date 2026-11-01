@@ -1,21 +1,33 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
+Download **0.3.0** from the [Miscellaneous files on the main CLAW page](https://www.nexusmods.com/skyrimspecialedition/mods/194798?tab=files&file_id=830298).
+The plugin keeps its independent source repository and is installed through
+Morphbench's plugin manager, rather than as a Skyrim Data mod. The previous
+standalone Nexus page 197517 has been permanently deleted; use the main CLAW download.
+
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
 preview panels. One full human morph vector controls the human preview and the
 editable many-to-many CLAW conversion. Wolf coefficients are derived and read-only;
 there is no inverse conversion. Rotating either panel follows the other through
 the host's native orientation link. Zoom, pan and framing remain independent.
 
-This plugin requires [Morphbench Application 0.8.5 and Launcher v1](https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.5).
-The exact qualified Application ZIP has SHA256
-`c24ab0f44431b4bff0d3ed5f708ede4a30523f724bed96c5d42e894383b10f19`.
-See its pinned [API contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.5/docs/addons.md)
-and [WASM contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.5/docs/addon-wasm.md).
+For a current installation use [Morphbench Application 0.8.7 and Launcher v3](https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.7).
+The API v1 independent-preview and packaged-WASM capabilities were introduced in
+Application 0.8.5; the earlier 0.8.5/Launcher v1 checks below remain historical.
+See the [API contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.7/src/main/docs/addons.md)
+and [WASM contract](https://github.com/Vhodnoylogin/morphbench/blob/v0.8.7/src/main/docs/addon-wasm.md).
 Independent previews and packaged WebAssembly are required; scoped geometry and
 parent-window downloads are optional capabilities. Stable Application 0.8.0 is
 insufficient. There is no separate JavaScript formula fallback: every calculated
 coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
+
+On 1 November 2026 the unchanged stable 0.3.0 package was opened in the actual
+released Application 0.8.7 browser with runtime v3. The published CLAW 0.7.0.0
+wolf and HIMBO human pair opened and all 124 MMuscular human values were applied,
+producing 15 wolf outputs. A [genuine screenshot](https://staticdelivery.nexusmods.com/mods/1704/images/194798/194798-1793527093-869173617.jpg)
+was captured from that session. This checks this browser workflow; it does not
+qualify the unfinished 0.4 development plugin or establish new game acceptance.
 
 Actual CLAW browser checks on31October opened male/female pairs, applied real
 thin/muscular vectors, rotated both directions, downloaded an18837-byte matrix,
