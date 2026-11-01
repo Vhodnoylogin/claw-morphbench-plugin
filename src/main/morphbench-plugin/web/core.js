@@ -230,25 +230,7 @@
     return scene.names.nif;
   }
 
-  async function writeLinked(sdk, catalog, profileId, human, reset, previouslyWritten, actorWeight, humanTraits) {
-    const result = evaluate(catalog, profileId, human, actorWeight, humanTraits);
-    const values = Object.assign(Object.create(null), result.values);
-    for (const target of previouslyWritten || []) {
-      if (!morphIdentifier(target)) fail("Invalid previously written target.");
-      if (!own(values, target)) values[target] = 0;
-    }
-    if (reset) {
-      for (const target of Object.keys(values)) values[target] = 0;
-    }
-    // Separate read validation and one atomic host batch. Never use morphs.reset.
-    const scene = await sdk.request("scene.get", {});
-    const morphs = await sdk.request("morphs.get", {});
-    const model = validateModel(scene, morphs, Object.keys(values));
-    const response = await sdk.request("morphs.set", { values: values });
-    return { result: result, model: model, values: values, response: response };
-  }
-
-  const api = Object.freeze({ parseHuman, validateHuman, validateTraits, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel, writeLinked });
+  const api = Object.freeze({ parseHuman, validateHuman, validateTraits, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWLink = api;
 })(typeof window !== "undefined" ? window : globalThis);

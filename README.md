@@ -46,7 +46,7 @@ settings, opened and applied Vanilla female and HIMBO male pairs. Both exported
 vectors match the native CLI bit-for-bit; a browser-exported pair of Vanilla
 matrices passes native parsing. This does not certify Launcher installation,
 its native window, Nexus availability or game behavior.
-Dev.6 passes 141 offline checks, including 23 checks against that released
+Dev.6 passes 138 offline checks, including 23 checks against that released
 0.8.6 SDK with the packaged plugin scripts, 50 native/WASM human-trait parity
 cases, 256-edge capacity boundaries and six retained actual-input vectors.
 Capacity comes from the shared kernel exports. The current catalog includes
