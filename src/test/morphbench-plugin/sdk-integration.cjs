@@ -21,7 +21,7 @@ class Element {
   async fire(name) { assert.equal(typeof this.events[name], "function"); return this.events[name](); }
 }
 function harness({ stable = false, missing = null, failWolfSet = false, geometry = false,
-  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, wolfNamesOverride = null, humanNamesOverride = null } = {}) {
+  geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, zoom = false, wolfNamesOverride = null, humanNamesOverride = null } = {}) {
   const nodes = new Map(), events = new Map(), calls = [], previews = new Map(); let serial = 0;
   const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family", "game-male-family"]);
   const element = id => { if (!nodes.has(id)) nodes.set(id, new Element(selectIds.has(id) ? "select" : "div")); return nodes.get(id); };
@@ -47,19 +47,24 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
       try {
         const { method, params } = message;
         if (method === "host.info") result = { apiVersion: 1, capabilities: stable ? ["scene.get", "morphs.get", "morphs.set"] :
-          ["models.list", "previews.create", "previews.close", "previews.scene.get", "previews.morphs.get", "previews.morphs.set", "previews.link", ...(geometry ? ["previews.geometry"] : []), ...(hostExports ? ["exports.prepare"] : [])],
+          ["models.list", "previews.create", "previews.close", "previews.scene.get", "previews.morphs.get", "previews.morphs.set", "previews.link", ...(geometry ? ["previews.geometry"] : []), ...(hostExports ? ["exports.prepare"] : []), ...(zoom ? ["previews.view.get","previews.view.set"] : [])],
           previewLimits: { maxPreviews: 4, loadTimeoutMs: 8000 }, language: "en", scope: "browser-session" };
         else if (method === "exports.prepare") { assert.equal(hostExports, true); result = { prepared: true, filename: params.filename }; }
         else if (method === "models.list") result = { root: "isolated", entries: ["human.nif", "wolf.nif"].map(name => ({ name, nif: name, tri: name + ".tri" })) };
         else if (method === "previews.create") { const preview = "opaque:" + (++serial), human = params.name === "human.nif";
-          previews.set(preview, { name: params.name, names: human ? humanNames : wolfNames, values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
-        else if (method === "previews.link") { assert.deepEqual(JSON.parse(JSON.stringify(params)), { previews: ["opaque:1", "opaque:2"], properties: ["orientation"] }); result = params; }
+          previews.set(preview, { name: params.name, zoom: human ? 1 : 1.25, revision: 0, names: human ? humanNames : wolfNames, values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
+        else if (method === "previews.link") { assert.deepEqual(JSON.parse(JSON.stringify(params)), { previews: [...previews.keys()], properties: ["orientation"] }); result = params; }
         else {
           const preview = previews.get(params.preview); assert.ok(preview, "Only a live explicit scoped preview may be targeted.");
           if (method === "previews.close") { previews.delete(params.preview); result = { closed: true }; }
           else if (method === "previews.scene.get") result = { open: true, names: { nif: preview.name, tri: preview.name + ".tri" }, shapes: geometry ? [{ name: geometryShapeName, vertices: geometryVertexCount, triangles: 1 }] : [] };
           else if (method === "previews.geometry") { assert.equal(geometry, true); assert.equal(params.shape, geometryShapeName);
             result = { name: geometryShapeName, space: "model", vertices: geometryVertices, baseVertices: geometryBase, triangles: [0, 1, 2] }; }
+          else if (method === "previews.view.get") { assert.equal(zoom,true); result={state:{zoom:preview.zoom},presets:{}}; }
+          else if (method === "previews.view.set") {
+            assert.equal(zoom,true);assert.deepEqual(Object.keys(params).sort(),["preview","zoom"]);
+            preview.zoom=params.zoom;emitView(params.preview,params.zoom,"addon_set_view");result={state:{zoom:preview.zoom},presets:{}};
+          }
           else if (method === "previews.morphs.get" || method === "previews.morphs.set") {
             if (method.endsWith(".set")) {
               if (failWolfSet && preview.name === "wolf.nif") throw new Error("Wolf scoped write failed after human write");
@@ -80,7 +85,12 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
   vm.runInContext(sdkSource, context, { filename: "actual-host-addon-sdk.js" });
   vm.runInContext(fs.readFileSync(path.join(path.dirname(path.resolve(process.argv[2])), "matrix-kernel.js"), "utf8"), context, {filename: "actual-shared-kernel.js"});
   for (const name of ["core.js", "pair.js", "input.js", "preview-controller.js", "main.js"]) vm.runInContext(source(name), context, { filename: name });
-  return { element, calls, previews, legacyValues, maximumExportPageBytes: () => maximumExportPageBytes };
+  function emitView(id,value,method="zoom_at") {
+    const preview=previews.get(id);preview.zoom=value;++preview.revision;
+    events.get("message")({source:parent,data:{type:"morphbench-addon:event",apiVersion:1,event:"previews.view.changed",
+      data:{preview:id,source:id,revision:preview.revision,state:{zoom:value},method}}});
+  }
+  return { element, calls, previews, legacyValues, gesture:emitView, maximumExportPageBytes: () => maximumExportPageBytes };
 }
 const settle = () => new Promise(setImmediate);
 async function open(bench) { await settle(); bench.element("human-model").value = "human.nif"; bench.element("wolf-model").value = "wolf.nif";
@@ -95,8 +105,7 @@ for (const sex of ["male", "female"]) for(const humanNames of [[],["$actor.weigh
   const expected=core.evaluateMatrix(profile,{},.75).values;
   bench.element("actor-weight").value="0.75";await bench.element("actor-weight").fire("change");
   assert.match(bench.element("actor-weight-provenance").textContent,/Manually edited/);
-  assert.equal(bench.calls.filter(c=>c.method==="previews.morphs.set").length,0);
-  await bench.element("apply").fire("click");
+  assert.equal(bench.element("live").checked,true);
   assert.match(bench.element("status").textContent,/Applied 0 human inputs/);
   const writes=bench.calls.filter(c=>c.method==="previews.morphs.set");assert.equal(writes.length,1);
   assert.equal(writes[0].params.preview,"opaque:2");
@@ -408,9 +417,9 @@ test("actual released SDK keeps explicit human traits outside body controls and 
   const height=rows.find(row=>row.children[0].textContent==="$human.height");
   height.children[2].value="1.2";await height.children[2].fire("change");
   assert.equal(Math.fround(JSON.parse(bench.element("human-traits").value)["$human.height"]),Math.fround(1.2));
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
-  await bench.element("apply").fire("click");
-  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");assert.equal(writes.length,1);assert.equal(writes[0].params.preview,"opaque:2");
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");
+  assert.equal(writes.length,2, "Live import and height edit each update only the wolf; reserved inputs never reach human TRI");
+  assert.ok(writes.every(write=>write.params.preview==="opaque:2"));
   assert.equal(Object.keys(bench.previews.get("opaque:1").values).length,0);
   assert.ok(Object.keys(writes[0].params.values).every(name=>core.sourceKind(name)===0));
   await bench.element("snapshot-export").fire("click");
@@ -419,4 +428,94 @@ test("actual released SDK keeps explicit human traits outside body controls and 
   height.children[1].checked=false;await height.children[1].fire("change");
   assert.equal(Object.hasOwn(JSON.parse(bench.element("human-traits").value),"$human.height"),false);
   assert.equal(height.children[2].disabled,true);assert.match(bench.element("human-traits-status").textContent,/\$human.height/);
+});
+
+
+test("live human slider updates both validated previews by default and reports the external catalog root",async()=>{
+  const bench=harness();await open(bench);
+  assert.equal(bench.element("live").checked,true);
+  assert.match(bench.element("catalog-root").textContent,/isolated.*2 available model/);
+  assert.match(bench.element("live-status").textContent,/Live:/);
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0,"Opening alone does not silently apply coefficients");
+  const row=bench.element("shared-sliders").children.find(row=>row.children[0].textContent==="Belly");
+  row.children[1].value="0.8";await row.children[1].fire("input");
+  assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.8));
+  assert.ok(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound>0);
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");
+  assert.equal(writes.length,2);assert.deepEqual(writes.map(call=>call.params.preview),["opaque:1","opaque:2"]);
+});
+
+test("changed resource selection blocks old-pair live writes and reopening restores live controls",async()=>{
+  const bench=harness();await open(bench);
+  bench.element("human-model").value="";await bench.element("human-model").fire("change");
+  assert.match(bench.element("pair-status").textContent,/Previous pair inactive for the selected files/);
+  bench.element("human").value='{"Belly":0.7}' ;await bench.element("human").fire("input");
+  assert.equal(bench.element("live").checked,false);assert.equal(bench.element("apply").disabled,true);assert.equal(bench.element("matrix-apply").disabled,true);
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  await bench.element("apply").fire("click");assert.match(bench.element("status").textContent,/Open the selected/);
+  await open(bench);assert.equal(bench.element("live").checked,true);
+  assert.match(bench.element("pair-status").textContent,/Pair ready/);
+  bench.element("human").value='{"Belly":0.5}';await bench.element("human").fire("input");
+  assert.ok(!bench.previews.has("opaque:1")&&!bench.previews.has("opaque:2"));
+  assert.equal(bench.previews.get("opaque:3").values.Belly,.5);
+});
+
+test("matrix changes visibly pause live human edits until explicit application",async()=>{
+  const bench=harness();await open(bench);
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});
+  await bench.element("matrix-paste-load").fire("click");
+  assert.equal(bench.element("live").checked,false);assert.match(bench.element("live-status").textContent,/Paused:/);
+  bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  assert.equal(bench.element("matrix-apply").disabled,false);assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
+  await bench.element("matrix-apply").fire("click");assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.3));
+  assert.match(bench.element("matrix-apply-status").textContent,/current matrix has been applied/);
+});
+
+test("invalid live input never writes and a partial live update closes its owned pair",async()=>{
+  const bench=harness({failWolfSet:true});await open(bench);
+  bench.element("human").value='{"UnknownHuman":1}';await bench.element("human").fire("input");
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);assert.equal(bench.previews.size,2);
+  bench.element("human").value='{"Belly":0.7}';await bench.element("human").fire("input");
+  assert.equal(bench.previews.size,0);assert.equal(bench.element("live").checked,false);
+  assert.equal(bench.element("apply").disabled,true);assert.match(bench.element("status").textContent,/Wolf scoped write failed/);
+});
+
+
+test("actual released SDK carries scoped zoom events and exact zoom-only writes without echo or main-model access",async()=>{
+  const bench=harness({zoom:true});await open(bench);
+  assert.match(bench.element("zoom-status").textContent,/Rotation and zoom follow/);
+  assert.equal(bench.previews.get("opaque:2").zoom,1);
+  const before=bench.calls.filter(c=>c.method==="previews.view.set").length;
+  bench.gesture("opaque:1",2.5);await settle();await settle();
+  assert.equal(bench.previews.get("opaque:2").zoom,2.5);
+  bench.gesture("opaque:2",1.5);await settle();await settle();
+  assert.equal(bench.previews.get("opaque:1").zoom,1.5);
+  const writes=bench.calls.filter(c=>c.method==="previews.view.set");assert.equal(writes.length,before+2);
+  assert.ok(writes.every(c=>Object.keys(c.params).sort().join(",")==="preview,zoom"));
+  assert.ok(!bench.calls.some(c=>c.method==="view.set"||c.method==="models.open"));
+});
+
+
+test("runtime UI separators, equations and matrix actions contain intended Unicode instead of double-decoded text",async()=>{
+  const bench=harness();await open(bench);
+  const collect=node=>[node.textContent,...node.children.flatMap(collect)];
+  const text=["profile-info","pair-status","matrix-status","results","matrix-rows"].flatMap(id=>collect(bench.element(id))).join("\n");
+  assert.ok(bench.element("profile-info").textContent.includes("\u00b7"));
+  assert.ok(bench.element("pair-status").textContent.includes("\u00b7"));
+  for(const symbol of ["\u2192","\u00d7","\u2191","\u2193"])assert.ok(text.includes(symbol),"Missing UI symbol "+symbol);
+  for(const bad of ["\u0412\u00b7","\u0432\u0402\u00a6","\u0413\u2014"])assert.ok(!text.includes(bad),"Mojibake reached runtime UI");
+});
+
+
+test("matrix edges retain labeled accessible controls for the responsive card presentation",async()=>{
+  const bench=harness();await open(bench);
+  const row=bench.element("matrix-rows").children[0];
+  assert.deepEqual(row.children.map(td=>td["data-label"]),["Edge","Human source","Wolf target","Function","Gain","Target cap","Exponent / constant","Order / remove"]);
+  assert.equal(row.children[1].children[0]["aria-label"],"Human source edge 1");
+  assert.equal(row.children[4].children[0]["aria-label"],"gain edge 1");
+  const gain=row.children[4].children[0];gain.value="0.1";await gain.fire("change");
+  assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
+  assert.equal(bench.element("matrix-apply").disabled,false);
 });

@@ -1,6 +1,6 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.6**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.7**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
@@ -30,7 +30,8 @@ This independent CLAW tool opens a human body and a wolf body in two host-render
 preview panels. One full human morph vector controls the human preview and the
 editable many-to-many CLAW conversion. Wolf coefficients are derived and read-only;
 there is no inverse conversion. Rotating either panel follows the other through
-the host's native orientation link. Zoom, pan and framing remain independent.
+the host's native orientation link. Dev.7 links zoom through optional public
+scoped view methods; pan and framing remain independent.
 
 The retained local qualification baseline is
 [Morphbench Application 0.8.5 and Launcher v1](https://github.com/Vhodnoylogin/morphbench/releases/tag/v0.8.5).
@@ -106,16 +107,18 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.6`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.7`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
 3. Import a full human coefficient JSON, a retained evidence-fixture JSON with
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
    Review the human controls and the read-only wolf calculation.
-4. **Apply to both previews** writes the human vector to the human model and
-   its mapped outputs to the wolf. The optional **Apply human slider edits
-   live** switch enables subsequent human slider edits; it starts unchecked.
+4. **Apply current values** writes the human vector to the human model and its
+   mapped outputs to the wolf. After a pair is successfully validated, live human
+   slider updates start enabled; valid human preset imports also apply while live
+   is enabled. Opening alone does not silently apply existing coefficients.
+   Resource/family changes and matrix edits pause live writes until reviewed.
 5. **Zero owned wolf outputs** preserves the human vector and unowned
    wolf controls. **Close comparison pair** disposes this plugin's two previews.
 
@@ -160,6 +163,48 @@ their literal names. The body-only human panel does not render a FaceGen head or
 change racial height. Wolf outputs use the supplied traits through the same
 compiled matrix as native; head/body attachment and rendered quality still need
 their own acceptance.
+
+## Development UI workflow
+
+Dev.7 shows a three-step resource → human-shape → conversion workflow, the public
+host catalogue root and explicit pair/live/error states. Human sliders and the
+read-only wolf comparison are separated; the conversion matrix is visible and
+has a direct action beside Apply and its own Apply matrix to previews button
+with draft/applied status. On narrow frames each edge becomes a labeled card;
+the wide editor remains a table. Raw JSON, face/stature and scalar authoring
+remain under Advanced human inputs. Body resources are external: choose the
+folder in Morphbench's host model browser/launcher, then refresh this plugin's
+catalogue. The plugin cannot select a new root through API v1 or install bodies.
+
+The host's native link synchronizes orientation. Dev.7 additionally synchronizes
+zoom through the public scoped view events/get/set when those capabilities are
+available. It uses owned handles, event revisions, generation checks and coalesced
+requests; orientation followers and matching command acknowledgements are not
+replayed. Pan and framing remain independent. A zoom failure pauses only the
+camera link and reports an error; it does not clear morphs or another preview.
+Host navigation tabs and frame replacement remain Morphbench responsibilities.
+On 1 November 2026 the exact dev.7 package
+`a2f37e66949ecefc12e167c4ed0fcd1c35fa25648a2bb827a30158e443943982`
+was checked in the actual reviewed Morphbench Application 0.8.8 candidate
+`2670d86eaf9013aed025b9dbc4a782b9c6e89b4efdb5f6f8f21ac4ebd7f3cd26`,
+using official Launcher v3 libraries and isolated copied resources. The common
+plugin tab opened, Unicode and narrow matrix cards rendered correctly, editing
+gain edge 117 to 0.25 paused live updates and marked a draft, and the local
+matrix Apply changed the wolf. Reselecting the active host tab retained the
+matrix. Resource selection blocked Apply and closing the pair worked. The
+subsequent inactive-pair status-label correction has a focused SDK regression;
+it does not change binding or calculation semantics.
+
+Actual released 0.8.7 browser checks on the earlier dev.7 package
+`44fc5b6a8bb8d983841fa09e8ec6bfd9044aaaf044a60aadf81c5aad59dadde3`
+confirmed bidirectional wheel zoom and rotation, human and wolf renderer changes
+for thin/muscular inputs and ArmsBiceps edits, and all 24 mapped MThin outputs
+matched independent native float32 values. The six additional native zero keys
+are outside the sparse matrix, rather than lost outputs. The zoom controller
+is unchanged in the 0.8.8 UI check, but a new zoom interaction on that host is
+not claimed by these observations. These are scoped browser and numerical
+checks, not game, colour, physics, artistic quality or public-release acceptance.
+Stable 0.3.0 remains the public download; dev.7 is unfinished feature-branch work.
 
 ## Wolf presets are coefficient and function matrices
 
@@ -320,8 +365,11 @@ main model are never cleanup targets. Closed/replaced sessions invalidate queued
 work; unsent human vectors coalesce to the latest one.
 
 The native `previews.link(..., properties:["orientation"])` handles rotation.
-No pointer-event RPC echo loop is wired. `pair.js` retains its independent tested
-camera/state foundation, but the actual host adapter uses the native link.
+Optional zoom synchronization listens only to public scoped view events and
+writes only `zoom` to the two validated owned handles. Revision/epoch checks,
+acknowledgement suppression and coalescing prevent ordinary echo and stale-pair
+writes. `pair.js` retains its independent tested camera/state foundation; no
+host DOM or private renderer access is used.
 Model loads, frame lifetime and renderer disposal remain the host's contract.
 
 ## Build and verify

@@ -46,6 +46,8 @@
       this.sdk = sdk; this.catalog = catalog; this.onState = onState;
       this._state = new PairState(catalog); this._pair = null; this._epoch = 0;
       this._owned = new Map(); this._jobs = []; this._running = false;
+      this._zoomSupported = false; this._zoomActive = false; this._zoomError = null;
+      this._zoomValues = new Map(); this._zoomRevisions = new Map(); this._zoomWritten = new Map(); this._zoomSerial = 0;
       if (typeof sdk.on === "function") this._unsubscribe = sdk.on("previews.changed", event => {
         if (!event || !this._owned.has(event.preview)) return;
         if (event.method === "previews.close") {
@@ -62,6 +64,71 @@
           }
         }
         this._notify("previews.changed");
+      });
+      if (typeof sdk.on === "function") this._unsubscribeView = sdk.on("previews.view.changed", event => this._viewChanged(event));
+    }
+    get zoomStatus() { return frozen({ available: this._zoomSupported, active: this._zoomActive, error: this._zoomError }); }
+    _resetZoom() {
+      this._zoomActive = false; this._zoomError = null; ++this._zoomSerial;
+      this._zoomValues.clear(); this._zoomRevisions.clear(); this._zoomWritten.clear();
+    }
+    static _viewZoom(response) {
+      const value = response && response.state && response.state.zoom;
+      if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) throw failure("invalidResponse", "Invalid public preview zoom state.");
+      return value;
+    }
+    async _startZoom(epoch, pair) {
+      if (!this._zoomSupported) return;
+      try {
+        for (const role of ["human", "wolf"]) {
+          const id = pair[role].preview;
+          this._zoomValues.set(id, PreviewController._viewZoom(await this._request("previews.view.get", { preview: id }, epoch, pair)));
+        }
+        const zoom = this._zoomValues.get(pair.human.preview), target = pair.wolf.preview;
+        if (this._zoomValues.get(target) !== zoom) {
+          this._zoomWritten.set(target, zoom);
+          const response = await this._request("previews.view.set", { preview: target, zoom }, epoch, pair);
+          if (PreviewController._viewZoom(response) !== zoom) throw failure("invalidResponse", "The host did not confirm paired zoom.");
+          this._zoomValues.set(target, zoom); this._zoomWritten.delete(target);
+        }
+        this._assert(epoch, pair); this._zoomActive = true;
+      } catch (error) {
+        this._assert(epoch, pair); this._zoomActive = false; this._zoomError = descriptor(error);
+      }
+    }
+    _viewChanged(event) {
+      const pair = this._pair;
+      if (!pair || !event || ![pair.human.preview, pair.wolf.preview].includes(event.preview) ||
+          !Number.isSafeInteger(event.revision) || event.revision <= (this._zoomRevisions.get(event.preview) || 0)) return;
+      const zoom = event.state && event.state.zoom;
+      if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom <= 0) return;
+      this._zoomRevisions.set(event.preview, event.revision);
+      const previous = this._zoomValues.get(event.preview); this._zoomValues.set(event.preview, zoom);
+      if (!this._zoomActive) return;
+      // Native orientation followers and our own exact zoom acknowledgements are
+      // observations, never new user intent. This prevents a camera echo loop.
+      if (event.source !== event.preview) return;
+      if (this._zoomWritten.get(event.preview) === zoom) { this._zoomWritten.delete(event.preview); return; }
+      if (previous === zoom) return;
+      const serial = ++this._zoomSerial, epoch = this._epoch;
+      this._enqueue("zoom", epoch, async () => {
+        if (!this._zoomActive || serial !== this._zoomSerial) return;
+        // A previous in-flight write can cross a newer opposite-panel gesture.
+        // Reconcile BOTH owned views with the latest gesture, without touching
+        // orientation, pan, framing, another pair or the host's main model.
+        for (const id of [event.preview, pair.human.preview === event.preview ? pair.wolf.preview : pair.human.preview]) {
+          this._assert(epoch, pair);
+          if (!this._zoomActive || serial !== this._zoomSerial) return;
+          if (this._zoomValues.get(id) === zoom) continue;
+          this._zoomWritten.set(id, zoom);
+          const response = await this._request("previews.view.set", { preview: id, zoom }, epoch, pair);
+          if (PreviewController._viewZoom(response) !== zoom) throw failure("invalidResponse", "The host did not confirm paired zoom.");
+          if (this._zoomWritten.get(id) === zoom) this._zoomWritten.delete(id);
+          if (serial === this._zoomSerial) this._zoomValues.set(id, zoom);
+        }
+      }).catch(error => {
+        if (["stalePair", "superseded"].includes(error.code) || epoch !== this._epoch || pair !== this._pair) return;
+        this._zoomActive = false; ++this._zoomSerial; this._zoomError = descriptor(error); this._notify("zoom.failed", error);
       });
     }
     supports(info) { return PreviewController.supports(info); }
@@ -83,13 +150,14 @@
     async _supported(epoch) {
       const info = await this.sdk.connect(); this._assert(epoch);
       if (!this.supports(info)) throw failure("unsupportedPreviews", "This host does not support the required independent preview methods.");
+      this._zoomSupported = typeof this.sdk.on === "function" && ["previews.view.get", "previews.view.set"].every(name => info.capabilities.includes(name));
       return info;
     }
     _enqueue(kind, epoch, run, data = null) {
       return new Promise((resolve, reject) => {
         const last = this._jobs[this._jobs.length - 1];
-        if (kind === "apply" && last && last.kind === kind && last.epoch === epoch) {
-          last.reject(failure("superseded", "A newer human vector replaced this unsent preview request."));
+        if (["apply", "zoom"].includes(kind) && last && last.kind === kind && last.epoch === epoch) {
+          last.reject(failure("superseded", kind === "zoom" ? "A newer zoom gesture replaced this unsent view request." : "A newer human vector replaced this unsent preview request."));
           this._jobs.pop();
         }
         this._jobs.push({ kind, epoch, run, data, resolve, reject }); this._pump();
@@ -122,7 +190,7 @@
       return errors;
     }
     async _discard(pair, error) {
-      if (pair === this._pair) { this._pair = null; this._state.invalidate(); this._epoch += 1; }
+      if (pair === this._pair) { this._pair = null; this._state.invalidate(); this._epoch += 1; this._resetZoom(); }
       const handles = new Set([pair.human.preview, pair.wolf.preview]);
       const errors = await this._cleanup([...this._owned.values()].filter(item => handles.has(item.preview)));
       if (errors.length) error.cleanupErrors = errors;
@@ -146,7 +214,7 @@
         }
         if ([humanName, wolfName].some(name => typeof name !== "string" || !name)) throw failure("invalidModel", "Select both catalogue names explicitly.");
       } catch (error) { return Promise.reject(error); }
-      const epoch = ++this._epoch; this._pair = null; this._state.invalidate();
+      const epoch = ++this._epoch; this._pair = null; this._state.invalidate(); this._resetZoom();
       return this._enqueue("open", epoch, async () => {
         const created = [];
         try {
@@ -181,7 +249,7 @@
           }, epoch);
           if (!linked || JSON.stringify(linked.previews) !== JSON.stringify([result.human.preview, result.wolf.preview]) ||
               JSON.stringify(linked.properties) !== '["orientation"]') throw failure("invalidResponse", "The host did not confirm the requested orientation link.");
-          this._pair = frozen(result); this._notify("open"); return this.pair;
+          this._pair = frozen(result); await this._startZoom(epoch, this._pair); this._notify("open"); return this.pair;
         } catch (error) {
           this._state.invalidate();
           const errors = await this._cleanup(created); if (errors.length) error.cleanupErrors = errors;
@@ -308,7 +376,7 @@
       });
     }
     close() {
-      const epoch = ++this._epoch; this._pair = null; this._state.invalidate();
+      const epoch = ++this._epoch; this._pair = null; this._state.invalidate(); this._resetZoom();
       return this._enqueue("close", epoch, async () => {
         const errors = await this._cleanup([...this._owned.values()]);
         if (errors.length) {

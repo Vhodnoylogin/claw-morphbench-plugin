@@ -16,7 +16,7 @@ function host(options = {}) {
   const calls = [], events = new Map(), previews = new Map(); let serial = 0;
   previews.set("third-party", { preview: "third-party", name: "unrelated", names: ["Other"], values: { Other: .6 } });
   const sdk = {
-    async connect() { return { apiVersion: 1, capabilities: options.capabilities || [...PreviewController.requiredCapabilities, ...(options.geometry ? ["previews.geometry"] : [])], previewLimits: { maxPreviews: 4, loadTimeoutMs: 8000 } }; },
+    async connect() { return { apiVersion: 1, capabilities: options.capabilities || [...PreviewController.requiredCapabilities, ...(options.geometry ? ["previews.geometry"] : []), ...(options.zoom ? ["previews.view.get", "previews.view.set"] : [])], previewLimits: { maxPreviews: 4, loadTimeoutMs: 8000 } }; },
     on(name, handler) { events.set(name, handler); return () => events.delete(name); },
     async request(method, params) {
       calls.push({ method, params: JSON.parse(JSON.stringify(params)) });
@@ -26,7 +26,7 @@ function host(options = {}) {
         assert.deepEqual(Object.keys(params), ["name"]);
         const preview = "opaque:" + (++serial), isHuman = params.name === "human.nif";
         const names = isHuman ? ["Belly", "HumanOther", "UnmappedHuman"] : [...(options.wolfNames || wolfNames)];
-        previews.set(preview, { preview, name: params.name, names, values: isHuman ? {} : { CLAWHeadEarSize: .6, CLAWTailLength: .8 } });
+        previews.set(preview, { preview, name: params.name, names, zoom: isHuman ? 1 : 1.25, revision: 0, values: isHuman ? {} : { CLAWHeadEarSize: .6, CLAWTailLength: .8 } });
         return { preview, name: params.name };
       }
       if (method === "previews.link") {
@@ -43,6 +43,13 @@ function host(options = {}) {
       if (method === "previews.geometry") {
         assert.equal(options.geometry, true); assert.equal(params.shape, "Body");
         return options.geometryResult || { name: "Body", space: "model", vertices: [1, 2, 3, 0, 0, 0, -1, -2, -3], baseVertices: [0, 0, 0, 0, 0, 0, -1, -1, -1] };
+      }
+      if (method === "previews.view.get") { assert.equal(options.zoom,true); return { state: { zoom: item.zoom }, presets: {} }; }
+      if (method === "previews.view.set") {
+        assert.equal(options.zoom,true); assert.deepEqual(Object.keys(params).sort(),["preview","zoom"]);
+        item.zoom=params.zoom; ++item.revision;
+        if(events.has("previews.view.changed")) events.get("previews.view.changed")({preview:params.preview,source:params.preview,revision:item.revision,state:{zoom:item.zoom},method});
+        return {state:{zoom:item.zoom},presets:{}};
       }
       if (method === "previews.morphs.set") {
         assert.deepEqual(Object.keys(params).sort(), ["preview", "values"]);
@@ -260,4 +267,69 @@ test("malformed or stale geometry responses fail without applying or retaining a
   const read = f.controller.readGeometry(), refused = assert.rejects(read, { code: "stalePair" }); await tick();
   const closing = f.controller.close(); gate.resolve(); await refused; await closing;
   assert.equal(f.calls.filter(call => call.method === "previews.geometry").length, 1); assert.equal(f.controller.pair, null);
+});
+
+
+function zoomGesture(f, preview, zoom, options={}) {
+  const item=f.previews.get(preview);item.zoom=zoom;item.revision=options.revision??(item.revision+1);
+  f.events.get("previews.view.changed")({preview,source:options.source??preview,revision:item.revision,state:{zoom},method:"pointer"});
+}
+
+test("optional public zoom aligns initial views and follows gestures from either side without echo",async()=>{
+  const f=await opened({zoom:true}),pair=f.controller.pair;
+  assert.equal(f.controller.zoomStatus.active,true);
+  assert.equal(f.previews.get(pair.wolf.preview).zoom,1);
+  f.calls.length=0;
+  zoomGesture(f,pair.human.preview,2);await tick();
+  assert.equal(f.previews.get(pair.wolf.preview).zoom,2);
+  zoomGesture(f,pair.wolf.preview,1.5);await tick();
+  assert.equal(f.previews.get(pair.human.preview).zoom,1.5);
+  assert.equal(f.calls.filter(c=>c.method==="previews.view.set").length,2,"Own setter acknowledgements must not echo");
+  assert.ok(f.calls.every(c=>[pair.human.preview,pair.wolf.preview].includes(c.params.preview)));
+});
+
+test("zoom ignores orientation followers, stale revisions, malformed values and foreign previews",async()=>{
+  const f=await opened({zoom:true}),pair=f.controller.pair;f.calls.length=0;
+  zoomGesture(f,pair.human.preview,2);await tick();const count=f.calls.length;
+  const revision=f.previews.get(pair.human.preview).revision;
+  f.events.get("previews.view.changed")({preview:pair.human.preview,source:pair.human.preview,revision,state:{zoom:3}});
+  f.events.get("previews.view.changed")({preview:pair.wolf.preview,source:pair.human.preview,revision:100,state:{zoom:2}});
+  f.events.get("previews.view.changed")({preview:pair.human.preview,source:pair.human.preview,revision:101,state:{zoom:NaN}});
+  f.events.get("previews.view.changed")({preview:"third-party",source:"third-party",revision:102,state:{zoom:8}});
+  await tick();assert.equal(f.calls.length,count);assert.equal(f.controller.zoomStatus.active,true);
+});
+
+test("latest opposite-panel zoom wins over an older in-flight write and queued gestures coalesce",async()=>{
+  const gate=deferred();let armed=false,held=false;
+  const f=await opened({zoom:true,async before(method){if(armed&&method==="previews.view.set"&&!held){held=true;await gate.promise;}}});
+  const pair=f.controller.pair;f.calls.length=0;armed=true;
+  zoomGesture(f,pair.human.preview,2);await tick();assert.equal(held,true);
+  zoomGesture(f,pair.wolf.preview,3);zoomGesture(f,pair.wolf.preview,4);
+  gate.resolve();await tick();await tick();
+  assert.equal(f.previews.get(pair.human.preview).zoom,4);assert.equal(f.previews.get(pair.wolf.preview).zoom,4);
+  assert.ok(f.calls.filter(c=>c.method==="previews.view.set").length<=3);
+});
+
+test("close invalidates a pending zoom and never targets a replacement or unrelated preview",async()=>{
+  const gate=deferred();let armed=false,held=false;
+  const f=await opened({zoom:true,async before(method){if(armed&&method==="previews.view.set"&&!held){held=true;await gate.promise;}}});
+  const pair=f.controller.pair;armed=true;zoomGesture(f,pair.human.preview,2);await tick();
+  const closing=f.controller.close();gate.resolve();await closing;await tick();
+  assert.equal(f.controller.pair,null);assert.equal(f.controller.zoomStatus.active,false);
+  assert.deepEqual([...f.previews.keys()],["third-party"]);
+  assert.ok(f.calls.filter(c=>c.method==="previews.view.set").every(c=>c.params.preview!=="third-party"));
+});
+
+test("failed zoom pauses its link visibly while morph ownership remains usable",async()=>{
+  let fail=false;const f=await opened({zoom:true,before(method){if(fail&&method==="previews.view.set")throw new Error("camera unavailable");}});
+  const pair=f.controller.pair;fail=true;zoomGesture(f,pair.human.preview,2);await tick();
+  assert.equal(f.controller.zoomStatus.active,false);assert.match(f.controller.zoomStatus.error.message,/camera unavailable/);
+  assert.ok(f.controller.pair);assert.equal(f.previews.size,3);
+  const before=f.calls.length;zoomGesture(f,pair.wolf.preview,3);await tick();assert.equal(f.calls.length,before);
+  await f.controller.apply({Belly:.5});assert.equal(f.previews.get(pair.human.preview).values.Belly,.5);
+});
+
+test("missing optional scoped camera capability does not fall back to global view writes",async()=>{
+  const f=await opened();assert.equal(f.controller.zoomStatus.available,false);assert.equal(f.controller.zoomStatus.active,false);
+  assert.ok(!f.calls.some(c=>c.method.includes("view.")));
 });

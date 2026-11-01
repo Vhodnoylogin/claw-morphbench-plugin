@@ -36,3 +36,31 @@ th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
 .export-navigation { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 12px; }
 .export-navigation label { margin: 0 0 0 8px; }
 .export-navigation input { width: 6rem; padding: 7px; }
+
+.workflow { padding-left: 1.4rem; margin: 0 0 14px; }
+.workflow li { margin: 7px 0; }
+#status { border-left: 3px solid #4fafa3; padding: 8px 10px; background: #8881; }
+#status.error { border-color: #e78080; }
+.resource-root, .pair-state { padding: 9px; border: 1px solid #8885; border-radius: 5px; overflow-wrap: anywhere; }
+.matrix-panel { margin-top: 18px; padding: 12px; border: 1px solid #4fafa388; border-radius: 5px; }
+.matrix-panel h2 { margin-top: 0; }
+.matrix-panel .table-wrap { max-height: 24rem; }
+#matrix-table thead { position: sticky; top: 0; background: Canvas; }
+#live-status { margin: 5px 0 12px; }
+
+/* Keep the same labeled controls/handlers; only presentation changes in a narrow host frame. */
+@media (max-width: 700px) {
+  #matrix-table { display: block; min-width: 0; width: 100%; font-size: 13px; }
+  #matrix-table thead { display: none; }
+  #matrix-table tbody { display: block; width: 100%; }
+  #matrix-table tr { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 7px 10px; padding: 10px; margin-bottom: 10px; border: 1px solid #8886; border-radius: 6px; }
+  #matrix-table tr[hidden] { display: none; }
+  #matrix-table td { display: block; grid-column: 1 / -1; min-width: 0; padding: 0; border: 0; text-align: left; }
+  #matrix-table td:nth-child(5), #matrix-table td:nth-child(6) { grid-column: auto; }
+  #matrix-table td::before { content: attr(data-label); display: block; margin-bottom: 3px; font-weight: 600; opacity: .8; }
+  #matrix-table td:first-child { display: flex; align-items: baseline; gap: 7px; font-weight: 700; }
+  #matrix-table input, #matrix-table select, #matrix-table input[type="text"] { min-width: 0; width: 100%; max-width: 100%; padding: 6px; }
+  .matrix-panel .table-wrap { max-height: min(70vh, 36rem); }
+  .matrix-panel { padding: 8px; }
+  .order-controls button { padding: 5px 12px; }
+}
