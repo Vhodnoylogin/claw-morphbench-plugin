@@ -84,7 +84,7 @@ test("canonical vanilla matrices have distinct sex identities and every game exp
     assert.ok(p);assert.equal(p.id,"CLAW.Vanilla"+(sex==="male"?"Male":"Female")+".Weight1");
     assert.equal(p.version,"game-weight-v1");assert.ok(p.rules.some(r=>r.source==="$actor.weight"));
   }
-  for(const male of ["HIMBO","Vanilla"])for(const female of ["CBBE","3BA","Vanilla"]){
+  for(const male of ["HIMBO","Vanilla"])for(const female of ["CBBE","3BA","BHUNP","Vanilla"]){
     for(const sex of ["male","female"]){
       const edited=catalog.profiles.find(p=>p.family===(sex==="male"?male:female)&&p.sex===sex);
       const xml=core.exportCatalog(catalog,edited,female,male);
@@ -144,7 +144,7 @@ if(process.argv[3]&&process.argv[4])test("native and WASM agree for vanilla/mixe
 
 if(process.argv[3]&&process.argv[4])test("native configuration parser accepts every independent male/female installation choice",()=>{
   const native=process.argv[3],dir=path.resolve(process.argv[4]);fs.mkdirSync(dir,{recursive:true});
-  for(const male of ["HIMBO","Vanilla"])for(const female of ["CBBE","3BA","Vanilla"]){
+  for(const male of ["HIMBO","Vanilla"])for(const female of ["CBBE","3BA","BHUNP","Vanilla"]){
     const selected=[catalog.profiles.find(p=>p.family===male&&p.sex==="male"),catalog.profiles.find(p=>p.family===female&&p.sex==="female")];
     const file=path.join(dir,"installed-"+male+"-"+female+".xml");fs.writeFileSync(file,core.exportCatalog(catalog,selected[0],female,male));
     const families=spawnSync(native,["families",file],{encoding:"utf8"});assert.equal(families.status,0,families.stderr);

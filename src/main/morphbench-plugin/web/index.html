@@ -25,7 +25,7 @@
   <h2>1. Human and werewolf resources</h2>
   <p id="paired-support" class="muted" role="status">Checking independent preview capabilities…</p>
   <p id="catalog-root" class="resource-root">Reading Morphbench's current model folder…</p>
-  <p class="muted">Body files are external. This plugin does not download, install or activate HIMBO, CBBE, 3BA or CLAW. Choose the folder in Morphbench's main browser/launcher first, then Refresh catalog here. For a combined comparison that folder must contain both human and wolf NIF/TRI resources. The family selector declares which body you actually supplied.</p>
+  <p class="muted">Body files are external. This plugin does not download, install or activate HIMBO, CBBE, 3BA, BHUNP or CLAW. Choose the folder in Morphbench's main browser/launcher first, then Refresh catalog here. For a combined comparison that folder must contain both human and wolf NIF/TRI resources. The family selector declares which body you actually supplied. The BHUNP matrix targets 3.34 Advanced Ver4 with Build Morphs enabled; classic UNP is a different body.</p>
   <label for="profile">Human resource family</label>
   <select id="profile"></select>
   <p id="profile-info" class="muted"></p>
@@ -89,7 +89,7 @@
     <label for="matrix-import">Import wolf matrix preset JSON or XML</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
     <details><summary>Paste wolf matrix preset JSON or XML</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
     <label for="game-male-family">Installed male body family for game configuration</label><select id="game-male-family"><option value="HIMBO">HIMBO</option><option value="Vanilla">Vanilla</option></select>
-    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="Vanilla">Vanilla</option></select>
+    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="BHUNP">BHUNP Advanced Ver4</option><option value="Vanilla">Vanilla</option></select>
     <div class="actions"><button id="matrix-export" type="button">Export wolf preset JSON</button><button id="matrix-xml" type="button">Export game configuration XML</button><button id="matrix-reset" type="button">Restore canonical matrix</button></div>
     <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">
     <div class="table-wrap"><table id="matrix-table"><thead><tr><th>Edge</th><th>Human source</th><th>Wolf target</th><th>Function</th><th>Gain</th><th>Target cap</th><th>Exponent / constant</th><th>Order / remove</th></tr></thead><tbody id="matrix-rows"></tbody></table></div>

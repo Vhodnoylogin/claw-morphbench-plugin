@@ -96,6 +96,26 @@ const settle = () => new Promise(setImmediate);
 async function open(bench) { await settle(); bench.element("human-model").value = "human.nif"; bench.element("wolf-model").value = "wolf.nif";
   await bench.element("human-model").fire("change"); await bench.element("open-pair").fire("click"); }
 
+test("actual SDK selects the BHUNP matrix, applies raw body coefficients and exports its independently selected family",async()=>{
+  const profile=catalog.profiles.find(p=>p.family==="BHUNP");assert.ok(profile);
+  const names=[...new Set(profile.rules.filter(r=>r.source&&core.sourceKind(r.source)===0).map(r=>r.source))];
+  const bench=harness({humanNamesOverride:names,wolfNamesOverride:core.matrixTargets(profile)});await settle();
+  assert.match(bench.element("profile").children.find(option=>option.value===profile.id).textContent,/BHUNP 3\.34 Advanced Ver4/);
+  bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
+  assert.equal(bench.element("apply").disabled,false);assert.equal(bench.element("shared-sliders").children.length,47);
+  const human={Arms:1,Biceps:.75,Triceps:.5,ChubbyArms:.2,"UNP Low":-.25,Breasts:.3};
+  bench.element("human").value=JSON.stringify(human);await bench.element("apply").fire("click");
+  const expected=core.evaluateMatrix(profile,human,.5).values;
+  const actualHuman=bench.previews.get("opaque:1").values;assert.equal(Object.keys(actualHuman).length,47);
+  for(const name of names)assert.equal(actualHuman[name],Math.fround(human[name]??0),name);
+  for(const [key,value]of Object.entries(expected))assert.equal(bench.previews.get("opaque:2").values[key],value,key);
+  assert.equal(bench.element("game-female-family").value,"BHUNP");
+  await bench.element("matrix-xml").fire("click");const xml=bench.element("export-text").value;
+  assert.ok(xml.includes('female="'+profile.id+'"'));assert.ok(xml.includes('family="BHUNP"'));
+  assert.ok(!xml.includes('family="CBBE"'));assert.ok(!xml.includes('family="3BA"'));
+  await bench.element("close-pair").fire("click");assert.equal(bench.previews.size,0);
+});
+
 for (const sex of ["male", "female"]) for(const humanNames of [[],["$actor.weight"]]) test("actual SDK opens weight-only vanilla " + sex + " with " + humanNames.length + " reserved model names without treating actor weight as a TRI slider", async () => {
   const profile=catalog.profiles.find(p=>p.family==="Vanilla"&&p.sex===sex);assert.ok(profile);
   const bench=harness({humanNamesOverride:humanNames,wolfNamesOverride:core.matrixTargets(profile).concat(["CLAWHeadEarSize","CLAWTailLength"])});await settle();

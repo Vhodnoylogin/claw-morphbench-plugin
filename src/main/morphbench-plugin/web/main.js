@@ -490,7 +490,7 @@
   });
   try {
     for (const profile of catalog.profiles) { const option = document.createElement("option"); option.value = profile.id;
-      option.textContent = profile.family + " " + profile.version + " (" + profile.sex + ")"; el("profile").appendChild(option); }
+      option.textContent = profile.family + " " + profile.version + (profile.family === "BHUNP" ? " Advanced Ver4" : "") + " (" + profile.sex + ")"; el("profile").appendChild(option); }
     resetMatrix(); el("provenance").textContent = "Mapping XML SHA-256: " + catalog.source.sha256; calculate(); buttons();
     sdk.connect().then(async info => {
       controller = new window.CLAWPreview.PreviewController(sdk, catalog, { onState: pairChanged }); supported = controller.supports(info);

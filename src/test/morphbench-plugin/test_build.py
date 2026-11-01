@@ -20,7 +20,8 @@ class BuildTests(unittest.TestCase):
         self.assertEqual({(profile["id"], profile["family"], profile["sex"], profile["version"])
                           for profile in catalog["profiles"][3:]}, {
             ("CLAW.VanillaMale.Weight1", "Vanilla", "male", "game-weight-v1"),
-            ("CLAW.VanillaFemale.Weight1", "Vanilla", "female", "game-weight-v1")})
+            ("CLAW.VanillaFemale.Weight1", "Vanilla", "female", "game-weight-v1"),
+            ("CLAW.BHUNP.3.34.AdvancedV4", "BHUNP", "female", "3.34")})
         self.assertEqual(catalog["source"]["sha256"], builder.hashlib.sha256(self.source).hexdigest())
         self.assertEqual(catalog["profiles"][0]["rules"][4]["source"], "Arms")
         self.assertGreater(sum(len(profile["rules"]) for profile in catalog["profiles"]), 200)

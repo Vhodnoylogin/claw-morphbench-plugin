@@ -1,11 +1,12 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.7**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.8**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. Dev.6 pins CLAW `4c2cdd9`: the native/WASM kernel shares reserved
+coefficients. Dev.8 pins CLAW `4b70482` and its six-profile 0.8 catalog, including
+BHUNP 3.34 Advanced Ver4. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
 simulation are bundled with this plugin.
@@ -22,7 +23,7 @@ The stable package opened in the actual released Application 0.8.7 browser using
 runtime v3: published CLAW 0.7.0.0 wolf resources and HIMBO opened as a pair, and
 124 MMuscular human inputs were applied to 15 wolf outputs. A
 [genuine screenshot](https://staticdelivery.nexusmods.com/mods/1704/images/194798/194798-1793527093-869173617.jpg)
-was captured. These observations qualify that stable workflow; **0.4.0-dev.6
+was captured. These observations qualify that stable workflow; **0.4.0-dev.8
 remains unpublished and has no new browser acceptance**. See
 [publication status](src/main/resources/nexus/README.md).
 
@@ -47,7 +48,7 @@ coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
 The current released host is Application 0.8.7 with Launcher v3. The stable
 0.3.0 browser check above is separate from this branch's retained 0.8.5/0.8.6
-qualification; it does not establish new dev.6 browser acceptance.
+qualification; it does not establish new dev.8 browser acceptance.
 The dev.4 package additionally passed 22 protocol/UI-harness checks using the
 actual released 0.8.6 SDK and scripts extracted from its ZIP. A separate actual
 0.8.6 browser run, using Launcher v2's Python and vendor libraries in isolated
@@ -107,9 +108,9 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.7`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.8`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
-   **3BA 2.48 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
+   **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
 3. Import a full human coefficient JSON, a retained evidence-fixture JSON with
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
@@ -127,9 +128,9 @@ preview default, not a measured game value. A matrix can reference `$actor.weigh
 without requiring that name in a human TRI. Vanilla profiles
 `CLAW.VanillaMale.Weight1` and `CLAW.VanillaFemale.Weight1`, family `Vanilla`,
 version `game-weight-v1`, use this scalar and can open a human NIF with no morphs.
-The same scalar is available to mixed HIMBO/CBBE/3BA matrices when explicitly
+The same scalar is available to mixed HIMBO/CBBE/3BA/BHUNP matrices when explicitly
 referenced. A required scalar cannot be omitted or silently replaced with zero.
-All five bundled canonical matrices reference it. The HIMBO/CBBE/3BA profiles
+All six bundled canonical matrices reference it. The HIMBO/CBBE/3BA/BHUNP profiles
 combine human morphs with an actor-weight contribution whose neutral reference
 is 0.5; Vanilla body variation relies on weight, with the separate human-trait
 rules described below.
@@ -204,7 +205,18 @@ are outside the sparse matrix, rather than lost outputs. The zoom controller
 is unchanged in the 0.8.8 UI check, but a new zoom interaction on that host is
 not claimed by these observations. These are scoped browser and numerical
 checks, not game, colour, physics, artistic quality or public-release acceptance.
-Stable 0.3.0 remains the public download; dev.7 is unfinished feature-branch work.
+Stable 0.3.0 remains the public download; dev.8 is unfinished feature-branch work.
+
+Dev.8 adds the independently measured BHUNP matrix to calculation, model binding
+and game XML export. It requires a BHUNP 3.34 **Advanced Ver4** body and matching
+TRI generated with **Build Morphs**. Classic UNP is a different body. The matrix
+uses actual BHUNP source names, including its Low/High controls; it is not a CBBE
+alias. Raw RaceMenu/TRI-positive `Arms`, `Legs` and `Breasts` shrink those regions,
+even though BodySlide's baked inverted controls can appear to run the other way.
+The preview consumes effective TRI coefficients, without a second inversion.
+Offline native/WASM and public-SDK checks do not establish actual BHUNP mesh,
+browser-rendered or game acceptance. The dev.7 observations above remain scoped
+to their exact older artifacts.
 
 ## Wolf presets are coefficient and function matrices
 
@@ -249,7 +261,7 @@ replacing the current matrix. Pasting the same JSON into the matrix import box
 avoids a native file picker. **Restore canonical matrix** discards local matrix
 edits; it does not apply any coefficients. **Export mapping XML** produces the
 native `MorphLinkProfiles` configuration with exactly one male profile
-(HIMBO or Vanilla) and one female profile (CBBE, 3BA or Vanilla), plus explicit
+(HIMBO or Vanilla) and one female profile (CBBE, 3BA, BHUNP or Vanilla), plus explicit
 defaults. Other families are omitted. Select the edited family for its sex before exporting so its edits cannot
 be silently discarded. Standalone XML export can contain one profile.
 

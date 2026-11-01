@@ -100,10 +100,10 @@ with IDs `CLAW.VanillaMale.Weight1` and `CLAW.VanillaFemale.Weight1`. Family ide
 is the family/sex pair, so both may coexist without allowing duplicate same-sex
 profiles. This is a scalar conversion preview, not proof of game capture or final
 visual differences between neutral weight geometry endpoints.
-All five current canonical profiles require an explicit actor weight. The three
+All six current canonical profiles require an explicit actor weight. The four
 human-morph families add their weight contribution around neutral weight 0.5;
-the two Vanilla profiles derive their body variation from weight. Dev.5 appends
-the human-trait rules below to all five families.
+the two Vanilla profiles derive their body variation from weight. The current
+catalog includes the human-trait rules below in all six profiles.
 
 ## Human-only FaceGen and stature observations
 
@@ -146,7 +146,7 @@ exact declared ID/family/version/sex. Defaults, when present, must reference an
 existing profile of the corresponding sex. Unknown fields and DTD/entities fail.
 
 A standalone export may contain one profile. A full game configuration exports
-exactly one male profile (HIMBO or Vanilla) and one female profile (CBBE, 3BA or
+exactly one male profile (HIMBO or Vanilla) and one female profile (CBBE, 3BA, BHUNP or
 Vanilla), with explicit defaults. It omits unselected families. An edited profile must
 be selected for export; the tool never silently replaces it with another family.
 
