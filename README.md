@@ -10,13 +10,21 @@ source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
 simulation are bundled with this plugin.
 
-**Publication status, owner report on 31 October 2026:** the Nexus page
-[197517](https://www.nexusmods.com/skyrimspecialedition/mods/197517) was published
-and is now hidden by its owner while package freshness is reviewed. The owner
-also reports the required Morphbench Launcher download in Nexus quarantine, so
-a fresh installation using Nexus alone is not established. Local build and
-preview checks do not verify public file freshness, download availability or the
-cause of quarantine. See [publication status](src/main/resources/nexus/README.md).
+**Published download:** stable **0.3.0** is a [Miscellaneous file on the main CLAW page](https://www.nexusmods.com/skyrimspecialedition/mods/194798?tab=files&file_id=830298).
+The old standalone Nexus page 197517 was permanently deleted on 1 November 2026
+after owner confirmation. The file requires Morphbench Application **0.8.7** or
+later with its matching Launcher; a current installation uses Launcher v3.
+The exact stable ZIP remains 131,570 bytes, SHA256
+`0c999ae234a11a846cb8cb8a2f2fb9990e1178cf0be8c766ec17ca2e5c2b6c25`.
+Its [0.3.0 changelog](src/main/resources/nexus/changelog-0.3.0.txt) is saved on Nexus.
+
+The stable package opened in the actual released Application 0.8.7 browser using
+runtime v3: published CLAW 0.7.0.0 wolf resources and HIMBO opened as a pair, and
+124 MMuscular human inputs were applied to 15 wolf outputs. A
+[genuine screenshot](https://staticdelivery.nexusmods.com/mods/1704/images/194798/194798-1793527093-869173617.jpg)
+was captured. These observations qualify that stable workflow; **0.4.0-dev.6
+remains unpublished and has no new browser acceptance**. See
+[publication status](src/main/resources/nexus/README.md).
 
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
 preview panels. One full human morph vector controls the human preview and the
@@ -36,9 +44,9 @@ parent-window downloads are optional capabilities. Stable Application 0.8.0 is
 insufficient. There is no separate JavaScript formula fallback: every calculated
 coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
-The current Morphbench source describes Application0.8.6 and Launcher v2; that
-combination is separate from the retained0.8.5 local plugin qualification and
-must not be presented as checked by these older observations.
+The current released host is Application 0.8.7 with Launcher v3. The stable
+0.3.0 browser check above is separate from this branch's retained 0.8.5/0.8.6
+qualification; it does not establish new dev.6 browser acceptance.
 The dev.4 package additionally passed 22 protocol/UI-harness checks using the
 actual released 0.8.6 SDK and scripts extracted from its ZIP. A separate actual
 0.8.6 browser run, using Launcher v2's Python and vendor libraries in isolated
