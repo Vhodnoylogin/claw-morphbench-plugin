@@ -7,6 +7,9 @@ on 1 November 2026 after the owner explicitly confirmed the deletion. Nexus
 redirected to the game landing page. This location change does not merge the
 game and plugin source repositories or change the plugin ID.
 
+The 0.3.0 changelog is saved on file 830298; its exact capability and compatibility
+text is maintained in `changelog-0.3.0.txt`.
+
 The file has mod-manager downloads and the requirements popup enabled. Its one
 per-file requirement is **Morphbench Application, minimum 0.8.7, maximum Latest**.
 The CLAW game file retains its own seven requirements; installing the offline
