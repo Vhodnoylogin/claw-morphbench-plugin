@@ -42,6 +42,9 @@ th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
 #status { border-left: 3px solid #4fafa3; padding: 8px 10px; background: #8881; }
 #status.error { border-color: #e78080; }
 .resource-root, .pair-state { padding: 9px; border: 1px solid #8885; border-radius: 5px; overflow-wrap: anywhere; }
+.sidebar-selection { padding: 9px; border: 1px solid #7aa6df88; border-radius: 5px; margin-bottom: 12px; }
+.sidebar-selection label { margin-top: 0; }
+.sidebar-selection p { margin-bottom: 0; }
 .matrix-panel { margin-top: 18px; padding: 12px; border: 1px solid #4fafa388; border-radius: 5px; }
 .matrix-panel h2 { margin-top: 0; }
 .matrix-panel .table-wrap { max-height: 24rem; }

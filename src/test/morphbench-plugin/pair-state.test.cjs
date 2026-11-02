@@ -47,6 +47,19 @@ test("pair authority requires distinct resource/view identities and matching dec
   assert.throws(() => state.bind(female, { human: { id: "human" }, wolf: resource("wolf") }), /identity/);
 });
 
+test("a confirmed old-preview close retires its prior binding ledger after a one-sided rebind", () => {
+  const { state, bindings, snapshots } = fixture(), operation = state.plan({ Belly: .5, HumanOther: .4 });
+  state.acknowledge(operation, receipt(operation));
+  const next = { human: resource("replacement-human"), wolf: bindings.wolf };
+  state.bind(female, next); state.arm({ human: { binding: next.human, names: snapshots.human.names }, wolf: snapshots.wolf });
+  assert.ok(state.ledger("human", bindings.human).size > 0);
+  assert.ok(state.ledger("wolf").size > 0);
+  state.retireClosedPreview(bindings.human.id);
+  assert.equal(state.ledger("human", bindings.human).size, 0);
+  assert.ok(state.ledger("wolf").size > 0, "The unchanged counterpart keeps its acknowledged output ledger");
+  assert.equal(state.ledger("human").size, 0, "A new preview acquires no old human morph ownership");
+});
+
 test("model names from another resource revision cannot arm a pair or permit a partial write", () => {
   const { state, snapshots } = fixture(); state.invalidate();
   assert.throws(() => state.plan({ Belly: 1 }), /arm/);

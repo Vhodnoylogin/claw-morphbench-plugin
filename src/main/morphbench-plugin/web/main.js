@@ -30,7 +30,7 @@
     el("open-pair").disabled = !supported || busy || !el("human-model").value || !el("wolf-model").value;
     el("close-pair").disabled = !supported || busy || (!pair && !controller.failedCleanup.length);
     el("refresh-models").disabled = !supported || busy;
-    for (const id of ["profile", "human-model", "wolf-model", "import", "human", "preset", "weight", "actor-weight", "human-traits"]) el(id).disabled = busy;
+    for (const id of ["profile", "human-model", "wolf-model", "import", "human", "preset", "weight", "actor-weight", "human-traits", "sidebar-role"]) el(id).disabled = busy;
     for (const row of sliderRows) { row.range.disabled = busy; row.number.disabled = busy; }
     for (const row of traitRows) { row.available.disabled = busy; row.number.disabled = busy || !row.available.checked; }
     for (const id of ["matrix-import", "matrix-reset", "matrix-add", "matrix-constant"]) el(id).disabled = busy;
@@ -204,6 +204,36 @@
     // close() revokes authority immediately, then serializes disposal behind
     // any already sent write. An unsent wolf write cannot outlive selection.
     const closing = controller.close(); pairChanged(); await closing;
+  }
+  async function sidebarSelected(selection) {
+    // A sidebar offer names a resource, not a body family or permission to apply
+    // retained inputs. The controller stages only that side before retiring it.
+    if (!selection || selection.root !== modelRoot || typeof selection.name !== "string") return;
+    const role = el("sidebar-role").value;
+    if (!["human", "wolf"].includes(role)) return;
+    if (busy) { status("Wait for the current preview operation, then select the model again."); return; }
+    const select = el(role + "-model");
+    if (![...select.children].some(option => option.value === selection.name)) {
+      status("The selected model is not in this catalogue. Refresh catalog before choosing it.", true); return;
+    }
+    const pair = selectedPair();
+    if (pair && pair[role].name === selection.name) {
+      status("This model is already open on the " + role + " side. The comparison is unchanged."); return;
+    }
+    ++inputRevision; el("live").checked = false; matrixPending = true;
+    if (!pair) {
+      select.value = selection.name; buttons();
+      status("Selected " + role + " resource. Review the human family and both models, then Open comparison pair."); return;
+    }
+    busy = true; buttons(); status("Replacing the " + role + " model; keeping the other preview and matrix\u2026");
+    try {
+      await controller.replace(role, selection.name, matrix);
+      select.value = selection.name;
+      const cleanup = controller.failedCleanup.length > 0;
+      status("Replaced the " + role + " model. The other preview, matrix and inputs are retained. Live updates are paused: review the human family and Apply current values." +
+        (cleanup ? " Cleanup of the old preview is incomplete; Close comparison pair retries it." : ""), cleanup);
+    } catch (error) { showError(error); }
+    finally { busy = false; pairChanged(); }
   }
   async function profileChanged() {
     el("live").checked = false; busy = true; buttons();
@@ -529,6 +559,14 @@
       const count = await refreshModels();
       status(count ? "Select a human family and both model files, then click Open comparison pair." :
         "No models found. Choose your resource folder in Morphbench's main browser/launcher, then Refresh catalog here."); buttons();
+      if (info.capabilities.includes("models.selection.subscribe")) {
+        sdk.on("models.selected", sidebarSelected);
+        try {
+          const subscription = await sdk.request("models.selection.subscribe", { enabled: true });
+          if (!subscription || subscription.enabled !== true) throw new Error("The host did not enable sidebar model selection.");
+          el("sidebar-role").value = "human"; el("sidebar-selection").hidden = false;
+        } catch (error) { showError(error); }
+      }
     }).catch(showError);
   } catch (error) { showError(error); }
 })();

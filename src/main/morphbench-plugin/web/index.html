@@ -16,6 +16,11 @@
 </head>
 <body>
   <h1>CLAW human/wolf comparison</h1>
+  <div id="sidebar-selection" class="sidebar-selection" hidden>
+    <label for="sidebar-role">Left model list replaces</label>
+    <select id="sidebar-role"><option value="human">Human</option><option value="wolf">Werewolf</option></select>
+    <p class="muted">Pick a model on the left to replace this side. The other model and your matrix stay in place. Select the actual human family below; it is never guessed from a filename.</p>
+  </div>
   <ol class="workflow" aria-label="Comparison workflow">
     <li><b>Choose resources.</b> Point Morphbench at your body files, select a human family and both models, then open the pair.</li>
     <li><b>Try a human shape.</b> Import a BodySlide preset and Apply current values, or move a human slider to update both models.</li>

@@ -22,9 +22,10 @@ class Element {
 }
 function harness({ stable = false, missing = null, failWolfSet = false, geometry = false,
   geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, zoom = false, wolfNamesOverride = null, humanNamesOverride = null,
-  modelNames = ["human.nif", "wolf.nif"], modelRoot = { value: "isolated" }, beforeRequest = null } = {}) {
+  modelNames = ["human.nif", "wolf.nif"], modelRoot = { value: "isolated" }, beforeRequest = null,
+  sidebarSelection = false, humanModelNames = ["human.nif", "human-next.nif"] } = {}) {
   const nodes = new Map(), events = new Map(), calls = [], previews = new Map(); let serial = 0;
-  const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family", "game-male-family"]);
+  const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family", "game-male-family", "sidebar-role"]);
   const element = id => { if (!nodes.has(id)) nodes.set(id, new Element(selectIds.has(id) ? "select" : "div")); return nodes.get(id); };
   let exportText = "", maximumExportPageBytes = 0;
   Object.defineProperty(element("export-text"), "value", {
@@ -32,6 +33,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
     set(value) { exportText = value; maximumExportPageBytes = Math.max(maximumExportPageBytes, Buffer.byteLength(value, "utf8")); }
   });
   element("human").value = "{}"; element("weight").value = "1"; element("actor-weight").value = "0.5";
+  element("sidebar-selection").hidden = true;
   const profile = catalog.profiles.find(item => item.family === "3BA");
   const humanNames = humanNamesOverride || (realRoot ? JSON.parse(fs.readFileSync(path.join(realRoot,"resource-name-audit.json"),"utf8"))[0].morphNames :
     [...new Set([...profile.rules.filter(rule => rule.source && core.sourceKind(rule.source) === 0).map(rule => rule.source), "Butt", "BigButt", "MuscleAbs", "HumanOther"])]);
@@ -49,13 +51,15 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
         const { method, params } = message;
         if (beforeRequest) await beforeRequest(method, params);
         if (method === "host.info") result = { apiVersion: 1, capabilities: stable ? ["scene.get", "morphs.get", "morphs.set"] :
-          ["models.list", "previews.create", "previews.close", "previews.scene.get", "previews.morphs.get", "previews.morphs.set", "previews.link", ...(geometry ? ["previews.geometry"] : []), ...(hostExports ? ["exports.prepare"] : []), ...(zoom ? ["previews.view.get","previews.view.set"] : [])],
+          ["models.list", "previews.create", "previews.close", "previews.scene.get", "previews.morphs.get", "previews.morphs.set", "previews.link", ...(geometry ? ["previews.geometry"] : []), ...(hostExports ? ["exports.prepare"] : []), ...(zoom ? ["previews.view.get","previews.view.set"] : []), ...(sidebarSelection ? ["models.selection.subscribe","previews.create.before"] : [])],
           previewLimits: { maxPreviews: 4, loadTimeoutMs: 8000 }, language: "en", scope: "browser-session" };
         else if (method === "exports.prepare") { assert.equal(hostExports, true); result = { prepared: true, filename: params.filename }; }
+        else if (method === "models.selection.subscribe") { assert.equal(sidebarSelection, true); result = { enabled: params.enabled }; }
         else if (method === "models.list") result = { root: modelRoot.value, entries: modelNames.map(name => ({ name, nif: name, tri: name + ".tri" })) };
-        else if (method === "previews.create") { const preview = "opaque:" + (++serial), human = params.name === "human.nif";
+        else if (method === "previews.create") { const preview = "opaque:" + (++serial), human = humanModelNames.includes(params.name);
           previews.set(preview, { name: params.name, zoom: human ? 1 : 1.25, revision: 0, names: human ? humanNames : wolfNames, values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
-        else if (method === "previews.link") { assert.deepEqual(JSON.parse(JSON.stringify(params)), { previews: [...previews.keys()], properties: ["orientation"] }); result = params; }
+        else if (method === "previews.link") { assert.equal(params.previews.length, 2); assert.equal(new Set(params.previews).size, 2);
+          assert.ok(params.previews.every(id => previews.has(id))); assert.deepEqual(JSON.parse(JSON.stringify(params.properties)), ["orientation"]); result = params; }
         else {
           const preview = previews.get(params.preview); assert.ok(preview, "Only a live explicit scoped preview may be targeted.");
           if (method === "previews.close") { previews.delete(params.preview); result = { closed: true }; }
@@ -92,11 +96,82 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
     events.get("message")({source:parent,data:{type:"morphbench-addon:event",apiVersion:1,event:"previews.view.changed",
       data:{preview:id,source:id,revision:preview.revision,state:{zoom:value},method}}});
   }
-  return { element, calls, previews, legacyValues, gesture:emitView, maximumExportPageBytes: () => maximumExportPageBytes };
+  const selection = data => events.get("message")({source:parent,data:{type:"morphbench-addon:event",apiVersion:1,event:"models.selected",data}});
+  return { element, calls, previews, legacyValues, gesture:emitView, selection, maximumExportPageBytes: () => maximumExportPageBytes };
 }
 const settle = () => new Promise(setImmediate);
 async function open(bench) { await settle(); bench.element("human-model").value = "human.nif"; bench.element("wolf-model").value = "wolf.nif";
   await bench.element("human-model").fire("change"); await bench.element("open-pair").fire("click"); }
+
+test("optional sidebar selection chooses an explicit role without main-scene writes or inferred family", async () => {
+  const bench = harness({sidebarSelection:true}); await settle();
+  assert.equal(bench.element("sidebar-selection").hidden, false);
+  assert.equal(bench.element("sidebar-role").value, "human");
+  assert.equal(bench.calls.filter(call=>call.method==="models.selection.subscribe").length, 1);
+  const profile = bench.element("profile").value;
+  bench.selection({root:"isolated",name:"human.nif"}); await settle();
+  assert.equal(bench.element("human-model").value,"human.nif"); assert.equal(bench.previews.size,0);
+  bench.element("sidebar-role").value="wolf";
+  bench.selection({root:"isolated",name:"wolf.nif"}); await settle();
+  assert.equal(bench.element("wolf-model").value,"wolf.nif"); assert.equal(bench.element("profile").value,profile);
+  await bench.element("open-pair").fire("click"); assert.equal(bench.previews.size,2);
+  assert.ok(!bench.calls.some(call=>["models.open","morphs.set","morphs.reset"].includes(call.method)));
+});
+
+test("sidebar human replacement keeps the exact wolf preview, inputs and edited matrix while pausing live", async () => {
+  const bench=harness({sidebarSelection:true,zoom:true,modelNames:["human.nif","human-next.nif","wolf.nif"],humanNamesOverride:["Belly","HumanOther"]}); await open(bench);
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.25,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});
+  await bench.element("matrix-paste-load").fire("click");
+  bench.element("human").value=JSON.stringify({Belly:.8,HumanOther:.3}); await bench.element("apply").fire("click");
+  await bench.element("matrix-export").fire("click"); const matrix=bench.element("export-text").value;
+  const wolf=bench.previews.get("opaque:2"),wolfState=JSON.stringify(wolf),human=bench.element("human").value;
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set").length;
+  bench.selection({root:"isolated",name:"human-next.nif"}); await settle();
+  assert.equal(bench.previews.size,2);assert.ok(!bench.previews.has("opaque:1"));
+  assert.equal(bench.calls.filter(call=>call.method==="previews.create").at(-1).params.before,"opaque:1");
+  assert.equal(bench.previews.get("opaque:2"),wolf);assert.equal(JSON.stringify(wolf),wolfState);
+  assert.equal(bench.element("human-model").value,"human-next.nif");assert.equal(bench.element("wolf-model").value,"wolf.nif");
+  assert.equal(bench.element("human").value,human);assert.equal(bench.element("live").checked,false);
+  assert.match(bench.element("pair-status").textContent,/human-next.nif/);assert.equal(bench.element("apply").disabled,false);
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,writes);
+  await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,matrix);
+  await bench.element("apply").fire("click");assert.equal(bench.previews.get("opaque:3").values.Belly,Math.fround(.8));
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.2));
+});
+
+test("sidebar wolf replacement preserves the human preview and ignores wrong-root, unknown and repeated picks", async () => {
+  const bench=harness({sidebarSelection:true,modelNames:["human.nif","wolf.nif","wolf-next.nif"]}); await open(bench);
+  bench.element("human").value=JSON.stringify({Belly:.6});await bench.element("apply").fire("click");
+  const human=bench.previews.get("opaque:1"),values=JSON.stringify(human.values),before=bench.calls.length;
+  for(const data of [{root:"other",name:"wolf-next.nif"},{root:"isolated",name:"missing.nif"},{root:"isolated",name:"human.nif"}]) {
+    bench.selection(data);await settle();
+  }
+  assert.equal(bench.calls.length,before);assert.equal(bench.previews.size,2);
+  bench.element("sidebar-role").value="wolf";bench.selection({root:"isolated",name:"wolf-next.nif"});await settle();
+  assert.equal(bench.previews.size,2);assert.ok(!bench.previews.has("opaque:2"));
+  assert.equal(bench.previews.get("opaque:1"),human);assert.equal(JSON.stringify(human.values),values);
+  assert.equal(bench.element("human-model").value,"human.nif");assert.equal(bench.element("wolf-model").value,"wolf-next.nif");
+  assert.equal(bench.element("live").checked,false);assert.equal(bench.element("apply").disabled,false);
+});
+
+test("sidebar replacement failure keeps the validated old pair and does not discard edits",async()=>{
+  const bench=harness({sidebarSelection:true,modelNames:["human.nif","human-next.nif","wolf.nif"],
+    beforeRequest(method,params){if(method==="previews.create"&&params.name==="human-next.nif")throw Error("Unreadable replacement model");}});
+  await open(bench);bench.element("human").value='{"Belly":0.7}';
+  const old=[...bench.previews.keys()];await bench.element("matrix-export").fire("click");const matrix=bench.element("export-text").value;
+  bench.selection({root:"isolated",name:"human-next.nif"});await settle();
+  assert.deepEqual([...bench.previews.keys()],old);assert.equal(bench.element("human-model").value,"human.nif");
+  assert.equal(bench.element("human").value,'{"Belly":0.7}');assert.equal(bench.element("apply").disabled,false);
+  assert.match(bench.element("status").textContent,/Unreadable replacement model/);
+  await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,matrix);
+});
+
+test("older hosts keep explicit resource selectors and never receive sidebar subscription calls",async()=>{
+  const bench=harness();await open(bench);
+  assert.equal(bench.element("sidebar-selection").hidden,true);
+  assert.ok(!bench.calls.some(call=>call.method==="models.selection.subscribe"));assert.equal(bench.previews.size,2);
+});
 
 test("actual SDK selects the BHUNP matrix, applies raw body coefficients and exports its independently selected family",async()=>{
   const profile=catalog.profiles.find(p=>p.family==="BHUNP");assert.ok(profile);

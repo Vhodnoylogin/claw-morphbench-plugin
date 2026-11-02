@@ -13,20 +13,22 @@ const deferred = () => { let resolve, reject; const promise = new Promise((yes, 
 const tick = () => new Promise(setImmediate);
 
 function host(options = {}) {
-  const calls = [], events = new Map(), previews = new Map(); let serial = 0;
+  const calls = [], events = new Map(), previews = new Map(), order = ["third-party"]; let serial = 0;
   previews.set("third-party", { preview: "third-party", name: "unrelated", names: ["Other"], values: { Other: .6 } });
   const sdk = {
-    async connect() { return { apiVersion: 1, capabilities: options.capabilities || [...PreviewController.requiredCapabilities, ...(options.geometry ? ["previews.geometry"] : []), ...(options.zoom ? ["previews.view.get", "previews.view.set"] : [])], previewLimits: { maxPreviews: 4, loadTimeoutMs: 8000 } }; },
+    async connect() { return { apiVersion: 1, capabilities: options.capabilities || [...PreviewController.requiredCapabilities, ...(options.geometry ? ["previews.geometry"] : []), ...(options.zoom ? ["previews.view.get", "previews.view.set"] : []), ...(options.beforePlacement ? ["previews.create.before"] : [])], previewLimits: { maxPreviews: options.maxPreviews || 4, loadTimeoutMs: 8000 } }; },
     on(name, handler) { events.set(name, handler); return () => events.delete(name); },
     async request(method, params) {
       calls.push({ method, params: JSON.parse(JSON.stringify(params)) });
       if (options.before) await options.before(method, params, { previews, calls });
       if (method === "models.list") { assert.deepEqual(params, {}); return { root: "catalogue", entries: ["human.nif", "wolf.nif", "another.nif"].map(name => ({ name, nif: name, tri: name + ".tri" })) }; }
       if (method === "previews.create") {
-        assert.deepEqual(Object.keys(params), ["name"]);
-        const preview = "opaque:" + (++serial), isHuman = params.name === "human.nif";
-        const names = isHuman ? ["Belly", "HumanOther", "UnmappedHuman"] : [...(options.wolfNames || wolfNames)];
+        assert.deepEqual(Object.keys(params).sort(), params.before ? ["before", "name"] : ["name"]);
+        if (params.before) { assert.equal(options.beforePlacement, true); assert.ok(previews.has(params.before)); }
+        const preview = "opaque:" + (++serial), isHuman = params.name === "human.nif" || (options.humanModels || []).includes(params.name);
+        const names = options.namesByModel?.[params.name] || (isHuman ? ["Belly", "HumanOther", "UnmappedHuman"] : [...(options.wolfNames || wolfNames)]);
         previews.set(preview, { preview, name: params.name, names, zoom: isHuman ? 1 : 1.25, revision: 0, values: isHuman ? {} : { CLAWHeadEarSize: .6, CLAWTailLength: .8 } });
+        if (params.before) order.splice(order.indexOf(params.before), 0, preview); else order.push(preview);
         return { preview, name: params.name };
       }
       if (method === "previews.link") {
@@ -38,7 +40,10 @@ function host(options = {}) {
       assert.equal(typeof params.preview, "string");
       const item = previews.get(params.preview);
       if (!item) throw Object.assign(new Error("Expired handle"), { code: "unknownPreview" });
-      if (method === "previews.close") { assert.deepEqual(Object.keys(params), ["preview"]); previews.delete(params.preview); return { closed: true }; }
+      if (method === "previews.close") { assert.deepEqual(Object.keys(params), ["preview"]); previews.delete(params.preview);
+        order.splice(order.indexOf(params.preview), 1);
+        if (options.emitClose) events.get("previews.changed")?.({ preview: params.preview, method });
+        return { closed: true }; }
       if (method === "previews.scene.get") { assert.deepEqual(Object.keys(params), ["preview"]); return { open: true, names: { nif: item.name, tri: item.name + ".tri" }, shapes: [{ name: "Body", vertices: 3, triangles: 1 }] }; }
       if (method === "previews.geometry") {
         assert.equal(options.geometry, true); assert.equal(params.shape, "Body");
@@ -59,7 +64,7 @@ function host(options = {}) {
       return { names: [...item.names], values: { ...item.values } };
     }
   };
-  return { sdk, calls, previews, events };
+  return { sdk, calls, previews, events, order };
 }
 async function opened(options = {}) {
   const fake = host(options), observations = [];
@@ -101,18 +106,20 @@ test("failed close retains only its role's ledger until a successful retry", asy
   assert.equal(f.controller.failedCleanup.length,0);
 });
 
-test("unknownPreview keeps existing terminal handle semantics without claiming an acknowledged ledger retirement", async () => {
+test("authoritative unknownPreview absence retires that handle and its acknowledged ledger", async () => {
   let unknownClose=false,human;
-  const f=await opened({before(method,params) {
-    if(unknownClose&&method==="previews.close"&&params.preview===human) throw Object.assign(new Error("Expired handle"),{code:"unknownPreview"});
+  const f=await opened({before(method,params,{previews}) {
+    if(unknownClose&&method==="previews.close"&&params.preview===human) {
+      previews.delete(human);throw Object.assign(new Error("Expired handle"),{code:"unknownPreview"}); }
   }});
   await f.controller.apply({Belly:.7},null,.5,{});
   const bindings=f.controller._state.snapshot().bindings;human=bindings.human.id;unknownClose=true;
   await f.controller.close();
   assert.equal(f.controller._owned.size,0);
   assert.equal(f.controller.failedCleanup.length,0);
-  assert.ok(f.controller._state.ledger("human",bindings.human).size>0);
+  assert.equal(f.controller._state.ledger("human",bindings.human).size,0);
   assert.equal(f.controller._state.ledger("wolf",bindings.wolf).size,0);
+  assert.equal(f.controller._state.owned.size,0);assert.deepEqual([...f.previews.keys()],["third-party"]);
 });
 
 test("capability discovery keeps stable v1 hosts unavailable without creating anything", async () => {
@@ -264,7 +271,8 @@ test("scoped change notifications never reapply coefficients or echo rotations",
 });
 
 test("external closure disposes the surviving owned preview and publishes final closed state", async () => {
-  const f = await opened(), pair = f.controller.pair, count = f.calls.length;
+  const f = await opened(); await f.controller.apply({ Belly: .4 });
+  const pair = f.controller.pair, count = f.calls.length;
   f.previews.delete(pair.human.preview);
   f.events.get("previews.changed")({ preview: pair.human.preview, method: "previews.close" });
   assert.equal(f.controller.pair, null);
@@ -272,6 +280,7 @@ test("external closure disposes the surviving owned preview and publishes final 
   assert.deepEqual(f.calls.slice(count), [{ method: "previews.close", params: { preview: pair.wolf.preview } }]);
   assert.deepEqual([...f.previews.keys()], ["third-party"]);
   assert.deepEqual(f.controller.failedCleanup, []);
+  assert.equal(f.controller._state.owned.size, 0);
   assert.equal(f.observations.at(-1).method, "close");
   assert.equal(f.observations.at(-1).pair, null);
 });
@@ -379,4 +388,166 @@ test("failed zoom pauses its link visibly while morph ownership remains usable",
 test("missing optional scoped camera capability does not fall back to global view writes",async()=>{
   const f=await opened();assert.equal(f.controller.zoomStatus.available,false);assert.equal(f.controller.zoomStatus.active,false);
   assert.ok(!f.calls.some(c=>c.method.includes("view.")));
+});
+
+for (const role of ["human", "wolf"]) test("single " + role + " replacement preserves the other opaque preview, coefficients, camera and ownership", async () => {
+  const f = await opened({ zoom: true, emitClose: true, humanModels: role === "human" ? ["another.nif"] : [] });
+  await f.controller.apply({ Belly: .6, HumanOther: .7 });
+  const before = f.controller.pair, other = role === "human" ? "wolf" : "human";
+  zoomGesture(f, before[other].preview, 2); await tick();
+  const kept = JSON.parse(JSON.stringify(f.previews.get(before[other].preview))), count = f.calls.length;
+  const next = await f.controller.replace(role, "another.nif");
+  assert.equal(next[other].preview, before[other].preview); assert.equal(next[role].name, "another.nif");
+  assert.notEqual(next[role].preview, before[role].preview);
+  assert.deepEqual(f.previews.get(next[other].preview), kept);
+  assert.equal(f.previews.get(next[role].preview).zoom, kept.zoom);
+  assert.equal(f.previews.has(before[role].preview), false); assert.equal(f.previews.size, 3);
+  const operations = f.calls.slice(count);
+  assert.ok(operations.filter(call => call.method === "previews.close").every(call => call.params.preview === before[role].preview));
+  assert.equal(operations.filter(call => call.method === "previews.morphs.set").length, 0);
+  assert.equal(f.controller._state.ledger(role, { id: before[role].preview, revision: before[role].preview, view: before[role].preview, sex: "female" }).size, 0);
+  const sparse = { ...core.getProfile(catalog, "female.3BA"), rules: [] };
+  await f.controller.apply({}, sparse);
+  if (other === "wolf") assert.equal(f.previews.get(next.wolf.preview).values.CLAWTorsoBellyRound, 0, "Kept wolf's previously owned output must still be cleared");
+  else assert.equal(f.previews.get(next.human.preview).values.HumanOther, 0, "Kept human's previous unmapped input must remain owned");
+  await f.controller.close(); assert.deepEqual([...f.previews.keys()], ["third-party"]); assert.equal(f.controller._state.owned.size, 0);
+});
+
+test("invalid and failed replacement candidates leave the old pair usable without morph writes", async () => {
+  let rejectCreate = false;
+  const f = await opened({ zoom: true, humanModels: ["another.nif"], namesByModel: { "another.nif": ["NotALinkedSource"] },
+    before(method) { if (rejectCreate && method === "previews.create") throw new Error("Replacement load failed"); } });
+  await f.controller.apply({ Belly: .4 }); const pair = f.controller.pair;
+  for (const attempt of [() => f.controller.replace("human", "absent.nif"), () => f.controller.replace("human", "another.nif")]) {
+    const old = JSON.parse(JSON.stringify([...f.previews])), start = f.calls.length;
+    await assert.rejects(attempt(), /exact name|configured source/);
+    assert.deepEqual(f.controller.pair, pair); assert.deepEqual([...f.previews], old);
+    assert.equal(f.calls.slice(start).filter(call => ["previews.morphs.set", "previews.view.set"].includes(call.method)).length, 0);
+  }
+  rejectCreate = true; await assert.rejects(f.controller.replace("wolf", "another.nif"), /Replacement load failed/);
+  assert.deepEqual(f.controller.pair, pair); rejectCreate = false;
+  await f.controller.apply({ Belly: .8 }); assert.equal(f.previews.get(pair.human.preview).values.Belly, Math.fround(.8));
+  await f.controller.close();
+});
+
+test("host capacity two refuses staged replacement without closing either model", async () => {
+  const f = await opened({ maxPreviews: 2 }), pair = f.controller.pair, start = f.calls.length;
+  await assert.rejects(f.controller.replace("wolf", "another.nif"), { code: "replacementUnavailable" });
+  assert.deepEqual(f.controller.pair, pair);
+  assert.equal(f.calls.slice(start).filter(call => ["previews.create", "previews.close", "previews.morphs.set"].includes(call.method)).length, 0);
+  await f.controller.apply({ Belly: .2 }); await f.controller.close();
+});
+
+test("replacement finishes the sent pair operation, revokes queued vectors and blocks new writes", async () => {
+  const gate = deferred(); let hold = false, sent = false;
+  const f = await opened({ humanModels: ["another.nif"], async before(method) {
+    if (hold && method === "previews.morphs.set" && !sent) { sent = true; await gate.promise; }
+  } });
+  hold = true; const pair = f.controller.pair;
+  const first = f.controller.apply({ Belly: .1 }); await tick(); assert.equal(sent, true);
+  const queued = f.controller.apply({ Belly: .2 }), queuedFailure = assert.rejects(queued, { code: "superseded" });
+  const replacing = f.controller.replace("human", "another.nif");
+  await assert.rejects(f.controller.apply({ Belly: .3 }), { code: "replacementPending" });
+  await assert.rejects(f.controller.zeroWolf(), { code: "replacementPending" });
+  await assert.rejects(f.controller.changeProfile("female.CBBE"), { code: "replacementPending" });
+  gate.resolve(); await first; await queuedFailure; const next = await replacing;
+  const writes = f.calls.filter(call => call.method === "previews.morphs.set");
+  assert.equal(writes.length, 2); assert.deepEqual(writes.map(call => call.params.preview), [pair.human.preview, pair.wolf.preview]);
+  assert.equal(next.wolf.preview, pair.wolf.preview);
+  assert.deepEqual(f.previews.get(next.human.preview).values, {}, "A replacement must not auto-apply old human input");
+  assert.equal(f.previews.get(next.wolf.preview).values.CLAWTorsoBellyRound, core.evaluate(catalog, "female.3BA", { Belly: .1 }).values.CLAWTorsoBellyRound);
+  await f.controller.close();
+});
+
+test("close cancels a pending replacement and closes its late created handle plus the old pair", async () => {
+  const gate = deferred(); let hold = false, sent = false;
+  const f = await opened({ async before(method) { if (hold && method === "previews.create") { sent = true; await gate.promise; } } });
+  hold = true; const replacing = f.controller.replace("wolf", "another.nif"), refused = assert.rejects(replacing, { code: "stalePair" });
+  await tick(); assert.equal(sent, true); const closing = f.controller.close(); gate.resolve(); await refused; await closing;
+  assert.equal(f.controller.pair, null); assert.deepEqual([...f.previews.keys()], ["third-party"]); assert.deepEqual(f.controller.failedCleanup, []);
+});
+
+test("failed retirement resolves the valid replacement with a retryable old handle and retires its ledger later", async () => {
+  let failedOld, fail = false;
+  const f = await opened({ before(method, params) { if (fail && method === "previews.close" && params.preview === failedOld) throw new Error("Old preview close blocked"); } });
+  await f.controller.apply({ Belly: .3 }); const old = f.controller.pair; failedOld = old.wolf.preview; fail = true;
+  const next = await f.controller.replace("wolf", "another.nif");
+  assert.equal(next.human.preview, old.human.preview); assert.notEqual(next.wolf.preview, failedOld);
+  assert.equal(f.controller.failedCleanup.length, 1); assert.equal(f.controller.failedCleanup[0].preview, failedOld);
+  assert.equal(f.observations.at(-1).method, "replace"); assert.equal(f.observations.at(-1).error.code, "cleanupFailed");
+  const oldBinding = { id: failedOld, revision: failedOld, view: failedOld, sex: "female" };
+  assert.ok(f.controller._state.ledger("wolf", oldBinding).size > 0);
+  fail = false; await f.controller.close(); assert.equal(f.controller._state.ledger("wolf", oldBinding).size, 0);
+  assert.equal(f.controller._state.owned.size, 0); assert.deepEqual([...f.previews.keys()], ["third-party"]);
+});
+
+test("same model selection is a no-op and wrong matrix metadata never revokes the current pair", async () => {
+  const f = await opened(), pair = f.controller.pair, start = f.calls.length;
+  assert.deepEqual(await f.controller.replace("human", "human.nif"), pair);
+  await assert.rejects(f.controller.replace("wolf", "another.nif", core.getProfile(catalog, "female.CBBE")), { code: "invalidMatrix" });
+  assert.equal(f.calls.length, start); assert.deepEqual(f.controller.pair, pair); await f.controller.close();
+});
+
+test("a refused candidate link restores the original pair without closing either old handle", async () => {
+  let rejectLink = false;
+  const f = await opened({ before(method, params) {
+    if (rejectLink && method === "previews.link" && params.previews.includes("opaque:3")) throw new Error("Replacement link refused");
+  } });
+  await f.controller.apply({ Belly: .4 }); const pair = f.controller.pair, before = JSON.parse(JSON.stringify([...f.previews]));
+  rejectLink = true; const start = f.calls.length;
+  await assert.rejects(f.controller.replace("wolf", "another.nif"), /Replacement link refused/);
+  assert.deepEqual(f.controller.pair, pair); assert.deepEqual([...f.previews], before);
+  const links = f.calls.slice(start).filter(call => call.method === "previews.link");
+  assert.deepEqual(links.at(-1).params.previews, [pair.human.preview, pair.wolf.preview]);
+  assert.deepEqual(f.calls.slice(start).filter(call => call.method === "previews.close").map(call => call.params.preview), ["opaque:3"]);
+  await f.controller.apply({ Belly: .7 }); await f.controller.close();
+});
+
+test("close before the serial replacement boundary starts prevents candidate creation", async () => {
+  const gate = deferred(); let hold = false, sent = false;
+  const f = await opened({ async before(method) { if (hold && method === "previews.morphs.set" && !sent) { sent = true; await gate.promise; } } });
+  hold = true; const applying = f.controller.apply({ Belly: .5 }), applyFailure = assert.rejects(applying, { code: "stalePair" });
+  await tick(); const replacing = f.controller.replace("wolf", "another.nif"), replaceFailure = assert.rejects(replacing, { code: "stalePair" });
+  const closing = f.controller.close(); gate.resolve(); await applyFailure; await replaceFailure; await closing;
+  assert.equal(f.calls.filter(call => call.method === "previews.create").length, 2);
+  assert.deepEqual([...f.previews.keys()], ["third-party"]); assert.equal(f.controller._replacement, null);
+});
+
+for (const role of ["human", "wolf"]) test("advertised before-placement preserves " + role + " panel position during replacement", async () => {
+  const f = await opened({ beforePlacement: true, humanModels: role === "human" ? ["another.nif"] : [] });
+  const pair = f.controller.pair;
+  assert.deepEqual(f.order, ["third-party", pair.human.preview, pair.wolf.preview]);
+  const next = await f.controller.replace(role, "another.nif");
+  assert.deepEqual(f.calls.filter(call => call.method === "previews.create").at(-1).params,
+    { name: "another.nif", before: pair[role].preview });
+  assert.deepEqual(f.order, ["third-party", next.human.preview, next.wolf.preview]);
+  await f.controller.close();
+});
+
+test("older hosts receive the unchanged plain-create schema during replacement", async () => {
+  const f = await opened(); await f.controller.replace("wolf", "another.nif");
+  assert.deepEqual(f.calls.filter(call => call.method === "previews.create").at(-1).params, { name: "another.nif" });
+  await f.controller.close();
+});
+
+test("repeated authoritative absence during old-model retirement cannot accumulate historical ownership", async () => {
+  let retiring = null;
+  const f = await opened({ before(method, params, { previews }) {
+    if (method === "previews.close" && params.preview === retiring) {
+      previews.delete(retiring); throw Object.assign(new Error("Already absent"), { code: "unknownPreview" });
+    }
+  } });
+  for (let round = 0; round < 8; round++) {
+    await f.controller.apply({ Belly: .3 }); const old = f.controller.pair;
+    retiring = old.wolf.preview;
+    const next = await f.controller.replace("wolf", old.wolf.name === "wolf.nif" ? "another.nif" : "wolf.nif");
+    const oldBinding = { id: retiring, revision: retiring, view: retiring, sex: "female" };
+    assert.equal(f.controller._state.ledger("wolf", oldBinding).size, 0);
+    assert.equal(f.controller._state.owned.size, 1, "Only the preserved human's ledger remains before the next Apply");
+    assert.equal(f.controller.failedCleanup.length, 0); assert.equal(f.previews.has(retiring), false);
+    assert.notEqual(next.wolf.preview, retiring);
+  }
+  retiring = null; await f.controller.close();
+  assert.equal(f.controller._state.owned.size, 0); assert.equal(f.controller._owned.size, 0);
+  assert.deepEqual([...f.previews.keys()], ["third-party"]);
 });

@@ -46,11 +46,13 @@
       this.sdk = sdk; this.catalog = catalog; this.onState = onState;
       this._state = new PairState(catalog); this._pair = null; this._epoch = 0;
       this._owned = new Map(); this._jobs = []; this._running = false;
+      this._replacement = null;
       this._zoomSupported = false; this._zoomActive = false; this._zoomError = null;
       this._zoomValues = new Map(); this._zoomRevisions = new Map(); this._zoomWritten = new Map(); this._zoomSerial = 0;
       if (typeof sdk.on === "function") this._unsubscribe = sdk.on("previews.changed", event => {
         if (!event || !this._owned.has(event.preview)) return;
         if (event.method === "previews.close") {
+          this._state.retireClosedPreview(event.preview);
           this._owned.delete(event.preview);
           if (this._pair && [this._pair.human.preview, this._pair.wolf.preview].includes(event.preview)) {
             // close() revokes pair authority immediately and serializes disposal
@@ -77,15 +79,15 @@
       if (typeof value !== "number" || !Number.isFinite(value) || value <= 0) throw failure("invalidResponse", "Invalid public preview zoom state.");
       return value;
     }
-    async _startZoom(epoch, pair) {
+    async _startZoom(epoch, pair, sourceRole = "human", align = true) {
       if (!this._zoomSupported) return;
       try {
         for (const role of ["human", "wolf"]) {
           const id = pair[role].preview;
           this._zoomValues.set(id, PreviewController._viewZoom(await this._request("previews.view.get", { preview: id }, epoch, pair)));
         }
-        const zoom = this._zoomValues.get(pair.human.preview), target = pair.wolf.preview;
-        if (this._zoomValues.get(target) !== zoom) {
+        const zoom = this._zoomValues.get(pair[sourceRole].preview), target = pair[sourceRole === "human" ? "wolf" : "human"].preview;
+        if (align && this._zoomValues.get(target) !== zoom) {
           this._zoomWritten.set(target, zoom);
           const response = await this._request("previews.view.set", { preview: target, zoom }, epoch, pair);
           if (PreviewController._viewZoom(response) !== zoom) throw failure("invalidResponse", "The host did not confirm paired zoom.");
@@ -104,7 +106,7 @@
       if (typeof zoom !== "number" || !Number.isFinite(zoom) || zoom <= 0) return;
       this._zoomRevisions.set(event.preview, event.revision);
       const previous = this._zoomValues.get(event.preview); this._zoomValues.set(event.preview, zoom);
-      if (!this._zoomActive) return;
+      if (!this._zoomActive || this._replacement) return;
       // Native orientation followers and our own exact zoom acknowledgements are
       // observations, never new user intent. This prevents a camera echo loop.
       if (event.source !== event.preview) return;
@@ -184,7 +186,11 @@
           this._state.retireClosedPreview(item.preview);
           this._owned.delete(item.preview);
         } catch (error) {
-          if (error.code === "unknownPreview") this._owned.delete(item.preview);
+          if (error.code === "unknownPreview") {
+            // The scoped host authoritatively reports that this identity no
+            // longer exists, including an old binding's delayed retirement.
+            this._state.retireClosedPreview(item.preview); this._owned.delete(item.preview);
+          }
           else { item.error = descriptor(error); this._owned.set(item.preview, item); errors.push({ preview: item.preview, ...descriptor(error) }); }
         }
       }
@@ -258,9 +264,95 @@
         }
       });
     }
+    replace(role, name, matrix = null) {
+      let pair, profile, selectedMatrix;
+      try {
+        if (this._replacement) throw failure("replacementPending", "Wait for the current model replacement.");
+        pair = this._pair;
+        if (!pair) throw failure("noPair", "Open both previews before replacing a model.");
+        if (!["human", "wolf"].includes(role) || typeof name !== "string" || !name) throw failure("invalidModel", "Select a role and an exact catalogue name.");
+        profile = core.getProfile(this.catalog, pair.profileId);
+        selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
+        if (selectedMatrix && ["id", "sex", "family", "version"].some(key => selectedMatrix[key] !== profile[key]))
+          throw failure("invalidMatrix", "Matrix belongs to a different selected human family.");
+        if (pair[role].name === name) return Promise.resolve(this.pair);
+      } catch (error) { return Promise.reject(error); }
+      // An already-sent paired commit finishes on its original two handles.
+      // Cancel unsent vectors/camera work now, block new writes, and fence the
+      // replacement only when it reaches that serial boundary. Never invent a
+      // partial paired acknowledgement merely to keep a counterpart alive.
+      const token = {}; this._replacement = token;
+      this._jobs = this._jobs.filter(job => {
+        if (!["apply", "zoom"].includes(job.kind)) return true;
+        job.reject(failure("superseded", "A model selection replaced this unsent preview request.")); return false;
+      });
+      return this._enqueue("replace", this._epoch, async () => {
+        if (pair !== this._pair) throw failure("stalePair", "The selected comparison pair is no longer current.");
+        const epoch = ++this._epoch, other = role === "human" ? "wolf" : "human", created = [];
+        this._resetZoom();
+        let linkAttempted = false, committed = false;
+        try {
+          const extras = [...this._owned.values()].filter(item => ![pair.human.preview, pair.wolf.preview].includes(item.preview));
+          const cleanupErrors = await this._cleanup(extras); this._assert(epoch, pair);
+          if (cleanupErrors.length) throw failure("cleanupFailed", "Previous preview cleanup remains unresolved.");
+          const info = await this._supported(epoch);
+          if (info.previewLimits && info.previewLimits.maxPreviews < 3)
+            throw failure("replacementUnavailable", "This host needs room for a third preview to replace a model without losing the current pair.");
+          const models = await this._request("models.list", {}, epoch, pair);
+          if (!models || !Array.isArray(models.entries) || !models.entries.some(item => item.name === name))
+            throw failure("invalidModel", "Choose an exact name from the host model catalogue.");
+          const response = await this.sdk.request("previews.create", {
+            name, ...(info.capabilities.includes("previews.create.before") ? { before: pair[role].preview } : {})
+          });
+          if (!response || typeof response.preview !== "string" || !response.preview || this._owned.has(response.preview))
+            throw failure("invalidResponse", "The host did not return a new opaque preview handle.");
+          const item = { preview: response.preview, name }; this._owned.set(item.preview, item); created.push(item);
+          this._assert(epoch, pair);
+          if (response.name !== name) throw failure("invalidResponse", "Created preview does not match the selected catalogue name.");
+          const scene = await this._request("previews.scene.get", { preview: item.preview }, epoch, pair);
+          if (!scene || scene.open !== true) throw failure("invalidResponse", "Created preview has no open scene.");
+          const morphs = morphSnapshot(await this._request("previews.morphs.get", { preview: item.preview }, epoch, pair));
+          const result = { ...pair, [role]: { preview: item.preview, name, names: [...morphs.names], scene: copy(scene) } };
+          const bindings = { human: binding(result.human.preview, profile.sex), wolf: binding(result.wolf.preview, profile.sex) };
+          const snapshots = { human: { binding: bindings.human, names: result.human.names }, wolf: { binding: bindings.wolf, names: result.wolf.names } };
+          const candidate = new PairState(this.catalog);
+          candidate.bind(pair.profileId, bindings); candidate.arm(snapshots, selectedMatrix);
+          const handles = [pair[other].preview, item.preview];
+          linkAttempted = true;
+          const linked = await this._request("previews.link", { previews: handles, properties: ["orientation"] }, epoch, pair);
+          if (!linked || JSON.stringify(linked.previews) !== JSON.stringify(handles) || JSON.stringify(linked.properties) !== '["orientation"]')
+            throw failure("invalidResponse", "The host did not confirm the replacement orientation link.");
+          // Rebinding retains acknowledged ownership keyed by the unchanged
+          // opaque resource. No coefficients are written during replacement.
+          this._state.bind(pair.profileId, bindings); this._state.arm(snapshots, selectedMatrix);
+          this._pair = frozen(result); committed = true;
+          await this._startZoom(epoch, this._pair, other);
+          const errors = await this._cleanup([this._owned.get(pair[role].preview)].filter(Boolean));
+          this._assert(epoch, this._pair);
+          let warning = null;
+          if (errors.length) { warning = failure("cleanupFailed", "The replacement is ready, but the old preview needs a Close retry."); warning.cleanupErrors = errors; }
+          this._notify("replace", warning); return this.pair;
+        } catch (error) {
+          if (!committed) {
+            const errors = await this._cleanup(created); if (errors.length) error.cleanupErrors = errors;
+            // A refused candidate leaves both old models and their ledgers
+            // usable. Re-establish a link only if the staged link was sent.
+            if (epoch === this._epoch && pair === this._pair) {
+              if (linkAttempted) {
+                try { await this._request("previews.link", { previews: [pair.human.preview, pair.wolf.preview], properties: ["orientation"] }, epoch, pair); }
+                catch (restoreError) { error.linkError = descriptor(restoreError); }
+              }
+              await this._startZoom(epoch, pair, "human", false);
+            }
+          }
+          this._notify("replace.failed", error); throw error;
+        }
+      }).finally(() => { if (this._replacement === token) this._replacement = null; });
+    }
     apply(fullHumanVector, matrix = null, actorWeight, humanTraits) {
       let human, selectedMatrix, weight, traits;
-      try { human = core.validateHuman(fullHumanVector); selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
+      try { if (this._replacement) throw failure("replacementPending", "Wait for the current model replacement before applying values.");
+        human = core.validateHuman(fullHumanVector); selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
         weight = actorWeight === undefined ? undefined : core.validateActorWeight(actorWeight); traits = core.validateTraits(humanTraits); }
       catch (error) { return Promise.reject(error); }
       return this._enqueue("apply", this._epoch, async (_, epoch) => {
@@ -300,7 +392,8 @@
     }
     changeProfile(profileId) {
       let profile;
-      try { profile = core.getProfile(this.catalog, profileId); }
+      try { if (this._replacement) throw failure("replacementPending", "Wait for the current model replacement before changing family.");
+        profile = core.getProfile(this.catalog, profileId); }
       catch (error) { return Promise.reject(error); }
       return this._enqueue("profile", this._epoch, async (_, epoch) => {
         const pair = this._pair;
@@ -322,6 +415,7 @@
       });
     }
     zeroWolf() {
+      if (this._replacement) return Promise.reject(failure("replacementPending", "Wait for the current model replacement before clearing values."));
       return this._enqueue("zero", this._epoch, async (_, epoch) => {
         const pair = this._pair;
         if (!pair) throw failure("noPair", "Open both previews before clearing wolf outputs.");

@@ -1,6 +1,6 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.10**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.11**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
@@ -111,7 +111,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
    **Load and enable** accepts a package at another path. Updating the same ID
    requires disabling it, using the manager's update operation, and enabling it
    again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.10`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.11`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, **classic UNP Renewal 4.6 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
@@ -125,6 +125,17 @@ Production source is under `src/main/morphbench-plugin`, tests under
    Resource/family changes and matrix edits pause live writes until reviewed.
 5. **Zero owned wolf outputs** preserves the human vector and unowned
    wolf controls. **Close comparison pair** disposes this plugin's two previews.
+
+On a host advertising `models.selection.subscribe`, **Left model list replaces**
+selects Human or Werewolf. Choosing a mesh in the host's left sidebar replaces only
+that side, retaining the other preview, edited matrix and input values. A replacement
+is validated before the old model closes; an unreadable or incompatible model keeps
+the current pair. Live updates pause until the family and retained inputs are reviewed
+and applied. Family/sex are explicit declarations, never inferred from filenames.
+Picking an already open resource leaves the pair unchanged. The optional
+`previews.create.before` host feature preserves its original panel position.
+Older hosts retain the plugin's explicit resource selectors; their main model list
+still performs a full-page navigation, so use those plugin selectors instead.
 
 **Actor weight** is a separate normalized 0..1 scalar. Its initial 0.5 is a manual
 preview default, not a measured game value. A matrix can reference `$actor.weight`
@@ -208,7 +219,21 @@ are outside the sparse matrix, rather than lost outputs. The zoom controller
 is unchanged in the 0.8.8 UI check, but a new zoom interaction on that host is
 not claimed by these observations. These are scoped browser and numerical
 checks, not game, colour, physics, artistic quality or public-release acceptance.
-Stable 0.3.0 remains the public download; dev.10 is unfinished feature-branch work.
+Stable 0.3.0 remains the public download; dev.11 is unfinished feature-branch work.
+
+Dev.11 fixes the sidebar workflow with the additive development-host selection
+subscription. It stages one replacement before closing the selected side, preserves
+the other handle and its coefficients/camera, and retains the edited matrix and
+human inputs. Already-sent paired writes complete on their old handles; queued
+unsent vectors are revoked. Failed candidates keep the old pair. Known absent or
+acknowledged closed previews retire their historical ownership ledgers.
+Optional placement keeps Human and Werewolf on their original sides.
+The exact dev.11 package passed 43 public-SDK/consumer harness checks, including
+retained real inputs, plus 42 controller and 17 pair-state checks. These are
+protocol/lifecycle tests, not a new actual-browser or game acceptance. The shared
+kernel and committed seven-profile catalogue are unchanged. The sidebar features
+are development-host additions; released Application 0.8.8 lacks those optional
+capabilities and retains its original main-list navigation behavior.
 
 Dev.9 fixes pair authority at the UI boundary. Selecting another resource revokes
 the previous pair immediately and closes its owned previews after sent requests
