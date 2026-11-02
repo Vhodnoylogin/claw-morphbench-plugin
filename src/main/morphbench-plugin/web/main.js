@@ -2,7 +2,7 @@
   "use strict";
   const el = id => document.getElementById(id);
   const catalog = window.CLAWMorphCatalog, core = window.CLAWLink, input = window.CLAWInput, sdk = window.MorphbenchAddon;
-  let controller = null, supported = false, busy = false, inputRevision = 0, presets = [];
+  let controller = null, supported = false, busy = false, inputRevision = 0, presets = [], modelRoot;
   let provenance = Object.create(null), inputLabel = "Manual preview coefficients";
   let matrix = null, matrixEdited = false, matrixPending = true, reference = null, geometry = null, geometrySupported = false;
   const exportPageBytes = 32 * 1024;
@@ -30,7 +30,8 @@
     el("open-pair").disabled = !supported || busy || !el("human-model").value || !el("wolf-model").value;
     el("close-pair").disabled = !supported || busy || (!pair && !controller.failedCleanup.length);
     el("refresh-models").disabled = !supported || busy;
-    for (const id of ["profile", "human-model", "wolf-model", "import", "actor-weight", "human-traits"]) el(id).disabled = busy;
+    for (const id of ["profile", "human-model", "wolf-model", "import", "human", "preset", "weight", "actor-weight", "human-traits"]) el(id).disabled = busy;
+    for (const row of sliderRows) { row.range.disabled = busy; row.number.disabled = busy; }
     for (const row of traitRows) { row.available.disabled = busy; row.number.disabled = busy || !row.available.checked; }
     for (const id of ["matrix-import", "matrix-reset", "matrix-add", "matrix-constant"]) el(id).disabled = busy;
     el("geometry-read").disabled = !selected || busy || !geometrySupported;
@@ -126,6 +127,7 @@
   }
   function filterSliders() { const term = el("filter").value.toLowerCase(); for (const row of sliderRows) row.node.hidden = !row.name.toLowerCase().includes(term); }
   async function applyPair() {
+    if (busy) { status("Wait for the current preview operation, then Apply current values.", true); return; }
     if (!selectedPair()) { status("Open the selected human and wolf pair before applying values.", true); return; }
     const revision = ++inputRevision;
     try { calculate(); const result = await controller.apply(values(), matrix, actorWeight(), humanTraits());
@@ -179,6 +181,7 @@
   }
   async function refreshModels() {
     const response = await controller.listModels();
+    const root = response.root || null, rootChanged = modelRoot !== undefined && root !== modelRoot; modelRoot = root;
     el("catalog-root").textContent = "Morphbench model folder: " + (response.root || "not selected") +
       " · " + response.entries.length + " available model(s).";
     for (const id of ["human-model", "wolf-model"]) {
@@ -187,16 +190,27 @@
       for (const row of response.entries) { const option = document.createElement("option"); option.value = row.name; option.textContent = row.name; select.appendChild(option); }
       select.value = response.entries.some(row => row.name === previous) ? previous : "";
     }
+    await reconcileSelectedPair(rootChanged);
+    pairChanged();
     buttons(); return response.entries.length;
+  }
+  async function reconcileSelectedPair(rootChanged = false) {
+    if (!controller || !controller.pair || !rootChanged && selectedPair()) return;
+    ++inputRevision; el("live").checked = false; matrixPending = true;
+    // close() revokes authority immediately, then serializes disposal behind
+    // any already sent write. An unsent wolf write cannot outlive selection.
+    const closing = controller.close(); pairChanged(); await closing;
   }
   async function profileChanged() {
     el("live").checked = false; busy = true; buttons();
     try { if (controller && controller.pair) await controller.changeProfile(el("profile").value);
       resetMatrix(); reference = null; calculate(); status("Family changed. Owned wolf outputs were cleared; review resources before applying.");
+      return true;
     } catch (error) {
-      if (error.code === "reopenRequired") { try { await controller.close(); resetMatrix(); reference = null; calculate(); status("Resource sex changed. Select matching human and wolf resources and reopen the pair."); }
+      if (error.code === "reopenRequired") { try { await controller.close(); resetMatrix(); reference = null; calculate(); status("Resource sex changed. Select matching human and wolf resources and reopen the pair."); return true; }
         catch (cleanupError) { showError(cleanupError); } }
       else { if (controller && controller.pair) el("profile").value = controller.pair.profileId; showError(error); }
+      return false;
     } finally { busy = false; pairChanged(); }
   }
   function resetMatrix() {
@@ -423,10 +437,17 @@
     return edited();
   });
   el("filter").addEventListener("input", filterSliders);
-  for (const id of ["human-model", "wolf-model"]) el(id).addEventListener("change", () => {
-    ++inputRevision; el("live").checked = false; pairChanged(); status("Resource selection changed. Click Open comparison pair to activate these files before editing morphs.");
+  for (const id of ["human-model", "wolf-model"]) el(id).addEventListener("change", async () => {
+    ++inputRevision; el("live").checked = false; matrixPending = true; busy = true; buttons();
+    try { await reconcileSelectedPair(); status("Resource selection changed. Click Open comparison pair to activate these files before editing morphs."); }
+    catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });
-  el("refresh-models").addEventListener("click", () => refreshModels().catch(showError));
+  el("refresh-models").addEventListener("click", async () => {
+    busy = true; buttons();
+    try { const count = await refreshModels(); status(selectedPair() ? "Catalog refreshed. The current comparison pair is ready." : count ?
+      "Catalog refreshed. Select both resources and click Open comparison pair." : "No models found. Choose a resource folder in Morphbench, then Refresh catalog here."); }
+    catch (error) { showError(error); } finally { busy = false; pairChanged(); }
+  });
   el("open-pair").addEventListener("click", async () => {
     busy = true; buttons(); el("live").checked = false;
     status("Opening the selected human and wolf resources\u2026");
@@ -474,7 +495,7 @@
       } else {
         const parsed = input.parseJSON(text);
         if (parsed.profileId) { core.getProfile(catalog, parsed.profileId); if (parsed.profileId !== el("profile").value) {
-          el("profile").value = parsed.profileId; await profileChanged(); } }
+          el("profile").value = parsed.profileId; if (!await profileChanged()) return; } }
         if (importRevision !== inputRevision) return;
         el("human-traits").value = JSON.stringify(parsed.humanTraits || {}, null, 2);
         provenance = parsed.provenance; inputLabel = parsed.label; el("human").value = JSON.stringify(parsed.values, null, 2);
@@ -486,7 +507,7 @@
         status("Imported human values. Open a matching pair or press Apply current values when live updates are paused.");
         if (el("live").checked && selectedPair()) await applyPair();
       }
-    } catch (error) { showError(error); } el("import").value = "";
+    } catch (error) { showError(error); } finally { el("import").value = ""; }
   });
   try {
     for (const profile of catalog.profiles) { const option = document.createElement("option"); option.value = profile.id;

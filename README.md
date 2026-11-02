@@ -1,6 +1,6 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.8**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.9**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
@@ -23,8 +23,8 @@ The stable package opened in the actual released Application 0.8.7 browser using
 runtime v3: published CLAW 0.7.0.0 wolf resources and HIMBO opened as a pair, and
 124 MMuscular human inputs were applied to 15 wolf outputs. A
 [genuine screenshot](https://staticdelivery.nexusmods.com/mods/1704/images/194798/194798-1793527093-869173617.jpg)
-was captured. These observations qualify that stable workflow; **0.4.0-dev.8
-remains unpublished and has no new browser acceptance**. See
+was captured. These observations qualify that stable workflow; the current
+development candidate has its separate scoped checks below. See
 [publication status](src/main/resources/nexus/README.md).
 
 This independent CLAW tool opens a human body and a wolf body in two host-rendered
@@ -46,9 +46,9 @@ parent-window downloads are optional capabilities. Stable Application 0.8.0 is
 insufficient. There is no separate JavaScript formula fallback: every calculated
 coefficient uses the shared compiled kernel. Root Builder is optional for the
 host's MO2-managed root deployment; separate Python and Blender are not needed.
-The current released host is Application 0.8.7 with Launcher v3. The stable
+The current released host is Application 0.8.8 with Launcher v3. The stable
 0.3.0 browser check above is separate from this branch's retained 0.8.5/0.8.6
-qualification; it does not establish new dev.8 browser acceptance.
+qualification; it does not qualify later candidates by inheritance.
 The dev.4 package additionally passed 22 protocol/UI-harness checks using the
 actual released 0.8.6 SDK and scripts extracted from its ZIP. A separate actual
 0.8.6 browser run, using Launcher v2's Python and vendor libraries in isolated
@@ -108,7 +108,7 @@ Production source is under `src/main/morphbench-plugin`, tests under
 1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
    and open its inspector. Updating the same ID requires disabling it, using the
    manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.8`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.9`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
@@ -205,7 +205,41 @@ are outside the sparse matrix, rather than lost outputs. The zoom controller
 is unchanged in the 0.8.8 UI check, but a new zoom interaction on that host is
 not claimed by these observations. These are scoped browser and numerical
 checks, not game, colour, physics, artistic quality or public-release acceptance.
-Stable 0.3.0 remains the public download; dev.8 is unfinished feature-branch work.
+Stable 0.3.0 remains the public download; dev.9 is unfinished feature-branch work.
+
+Dev.9 fixes pair authority at the UI boundary. Selecting another resource revokes
+the previous pair immediately and closes its owned previews after sent requests
+finish; unsent wolf writes and queued vectors are revoked. Refreshing a catalogue with a
+missing resource or a changed root also closes that pair, even if filenames match.
+The human vector and edited matrix remain local for explicit reopening. Human
+controls cannot issue live writes during a preview operation. If a fixture's
+family transition is refused, the import preserves the previous inputs and matrix
+and reports the error instead of accepting coefficients under the wrong family.
+
+On 2 November 2026 the exact dev.9 ZIP
+`2459f854dd800630fb84ac975fc9cd5c9cd8e09fc5b5c612f25405ee423c241a`
+(205,251 bytes, ten browser assets) was checked in released Application **0.8.8**
+with Launcher v3 libraries and isolated copied resources. The folder plugin loaded
+automatically into its host tab; disable/enable, reopening and repeated selection
+worked. HIMBO and CLAW 0.8 wolf resources opened as a pair. Rotation and wheel zoom
+followed either panel. Human ArmsBiceps=2 changed both actual models. Editing its
+matrix gain to 0.25 changed the wolf output from 1 to 0.5; JSON export, restore,
+pasted import and Apply preserved that edit. Changing the function to power also
+applied and calculated 0.25. Two complete geometry exports retained 14,597 human
+and 99,909 wolf vertices each. All 30 native output slots matched actual preview
+coefficients bit-for-bit for the canonical and edited XML; the edited matrix
+changed wolf geometry while leaving the human model unchanged. Browser-exported
+game XML was accepted by the native parser. Resource changes removed the old pair.
+
+The packaged consumer passed all 37 tests against the released 0.8.8 SDK with real
+fixture inputs, plus 28 controller and 16 pair-state checks. Fourteen builder checks
+and 59 kernel/input/matrix checks also passed; numerical assets are byte-identical
+to that independently tested package. Native/WASM conformance includes 202 generic,
+48 weight, 55 trait and 98 BHUNP cases, ten sparse cases and the 256-edge boundary.
+This qualifies the listed browser and numerical scenarios, not every body family,
+textured appearance, physics, game behavior or a new public release. The shared
+evaluator and its six-profile dependency pin are unchanged. Classic UNP awaits a
+committed upstream catalogue pin; it is not treated as BHUNP.
 
 Dev.8 adds the independently measured BHUNP matrix to calculation, model binding
 and game XML export. It requires a BHUNP 3.34 **Advanced Ver4** body and matching
