@@ -25,7 +25,7 @@
   <h2>1. Human and werewolf resources</h2>
   <p id="paired-support" class="muted" role="status">Checking independent preview capabilities…</p>
   <p id="catalog-root" class="resource-root">Reading Morphbench's current model folder…</p>
-  <p class="muted">Body files are external. This plugin does not download, install or activate HIMBO, CBBE, 3BA, BHUNP or CLAW. Choose the folder in Morphbench's main browser/launcher first, then Refresh catalog here. For a combined comparison that folder must contain both human and wolf NIF/TRI resources. The family selector declares which body you actually supplied. The BHUNP matrix targets 3.34 Advanced Ver4 with Build Morphs enabled; classic UNP is a different body.</p>
+  <p class="muted">Body files are external. This plugin does not download, install or activate HIMBO, CBBE, 3BA, BHUNP, UNP or CLAW. Choose the folder in Morphbench's main browser/launcher first, then Refresh catalog here. For a combined comparison that folder must contain both human and wolf resources. The family selector declares which body you actually supplied. BHUNP targets 3.34 Advanced Ver4 with Build Morphs enabled. Classic UNP Renewal 4.6 uses actor weight and available face/stature traits; its human NIF needs no TRI. Enable the host's "and without morphs" option to list such files.</p>
   <label for="profile">Human resource family</label>
   <select id="profile"></select>
   <p id="profile-info" class="muted"></p>
@@ -58,13 +58,14 @@
   </div>
   <label class="inline"><input id="live" type="checkbox" disabled> Update both models when I move human sliders</label>
   <p id="live-status" class="muted" role="status"></p>
-  <label for="filter">Filter full human morph controls</label><input id="filter" type="search" placeholder="Morph name">
-  <div id="shared-sliders"></div>
-  <details><summary>Advanced human inputs — JSON, actor weight, face and stature</summary>
-  <label for="human">Human values (finite JSON map)</label>
-  <textarea id="human" rows="8" spellcheck="false">{}</textarea>
   <label for="actor-weight">Actor weight — normalized 0..1</label><input id="actor-weight" type="number" min="0" max="1" step="0.01" value="0.5">
   <p id="actor-weight-provenance" class="muted">Manual preview actor weight, initially 0.5; not a measured game value. This separate scalar supplies $actor.weight to matrices. It never writes a human TRI slider or blends fixed NIF geometry.</p>
+  <p id="human-control-status" class="muted" role="status">Open a comparison pair to inspect its human body controls.</p>
+  <label for="filter">Filter full human morph controls</label><input id="filter" type="search" placeholder="Morph name">
+  <div id="shared-sliders"></div>
+  <details><summary>Advanced human inputs — JSON, face and stature</summary>
+  <label for="human">Human values (finite JSON map)</label>
+  <textarea id="human" rows="8" spellcheck="false">{}</textarea>
   <p>Human face and stature inputs. Check a field to declare an explicit preview value; leave it unchecked when unavailable.</p>
   <div id="human-trait-controls"></div>
   <label for="human-traits">Human face/stature values — JSON import or direct edit</label>
@@ -89,7 +90,7 @@
     <label for="matrix-import">Import wolf matrix preset JSON or XML</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
     <details><summary>Paste wolf matrix preset JSON or XML</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
     <label for="game-male-family">Installed male body family for game configuration</label><select id="game-male-family"><option value="HIMBO">HIMBO</option><option value="Vanilla">Vanilla</option></select>
-    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="BHUNP">BHUNP Advanced Ver4</option><option value="Vanilla">Vanilla</option></select>
+    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="BHUNP">BHUNP Advanced Ver4</option><option value="UNP">UNP Renewal 4.6 (classic)</option><option value="Vanilla">Vanilla</option></select>
     <div class="actions"><button id="matrix-export" type="button">Export wolf preset JSON</button><button id="matrix-xml" type="button">Export game configuration XML</button><button id="matrix-reset" type="button">Restore canonical matrix</button></div>
     <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">
     <div class="table-wrap"><table id="matrix-table"><thead><tr><th>Edge</th><th>Human source</th><th>Wolf target</th><th>Function</th><th>Gain</th><th>Target cap</th><th>Exponent / constant</th><th>Order / remove</th></tr></thead><tbody id="matrix-rows"></tbody></table></div>

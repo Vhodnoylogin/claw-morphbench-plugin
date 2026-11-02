@@ -73,7 +73,7 @@
   }
   function matrixTargets(matrix) { return [...new Set(validateMatrix(matrix).rules.map(rule => rule.target))]; }
   function validateMatrix(profile) {
-    if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "BHUNP", "HIMBO", "Vanilla"].includes(profile.family) ||
+    if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "BHUNP", "UNP", "HIMBO", "Vanilla"].includes(profile.family) ||
         !["male", "female"].includes(profile.sex) ||
         (profile.family !== "Vanilla" && profile.sex !== (profile.family === "HIMBO" ? "male" : "female")) ||
         Object.keys(profile).some(key => !["id", "family", "sex", "version", "calibration", "rules"].includes(key)) ||
@@ -169,7 +169,7 @@
 
   function exportCatalog(catalog, matrix, femaleFamily, maleFamily = "HIMBO") {
     const edited = validateMatrix(matrix);
-    if (!["CBBE", "3BA", "BHUNP", "Vanilla"].includes(femaleFamily) || !["HIMBO", "Vanilla"].includes(maleFamily)) fail("Declare the installed male and female body families before exporting game configuration.");
+    if (!["CBBE", "3BA", "BHUNP", "UNP", "Vanilla"].includes(femaleFamily) || !["HIMBO", "Vanilla"].includes(maleFamily)) fail("Declare the installed male and female body families before exporting game configuration.");
     if (edited.sex === "female" && edited.family !== femaleFamily) fail("Select the edited female family before exporting game configuration.");
     if (edited.sex === "male" && edited.family !== maleFamily) fail("Select the edited male family before exporting game configuration.");
     const selected = [["male", maleFamily], ["female", femaleFamily]].map(([sex, family]) => {

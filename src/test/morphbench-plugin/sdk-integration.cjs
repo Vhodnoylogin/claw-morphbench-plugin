@@ -140,6 +140,24 @@ for (const sex of ["male", "female"]) for(const humanNames of [[],["$actor.weigh
   await bench.element("close-pair").fire("click");
 });
 
+test("actual SDK opens classic UNP without TRI, applies weight and exports an independent female family",async()=>{
+  const profile=catalog.profiles.find(p=>p.family==="UNP");assert.ok(profile);assert.equal(profile.sex,"female");
+  const bench=harness({humanNamesOverride:[],wolfNamesOverride:core.matrixTargets(profile)});await settle();
+  bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
+  assert.equal(bench.element("shared-sliders").children.length,0);
+  assert.match(bench.element("human-control-status").textContent,/no body TRI controls.*actor weight/);
+  assert.equal(bench.element("game-female-family").value,"UNP");
+  bench.element("actor-weight").value="0.75";await bench.element("actor-weight").fire("change");
+  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set");assert.equal(writes.length,1);
+  assert.equal(writes[0].params.preview,"opaque:2");
+  assert.deepEqual(JSON.parse(JSON.stringify(writes[0].params.values)),JSON.parse(JSON.stringify(core.evaluateMatrix(profile,{},.75).values)));
+  assert.ok(!Object.hasOwn(writes[0].params.values,"$actor.weight"));
+  await bench.element("matrix-xml").fire("click");const xml=bench.element("export-text").value;
+  assert.ok(xml.includes('family="UNP"'));assert.ok(xml.includes('female="'+profile.id+'"'));
+  assert.ok(!xml.includes('family="BHUNP"'));assert.ok(!xml.includes('family="3BA"'));
+  await bench.element("close-pair").fire("click");assert.equal(bench.previews.size,0);
+});
+
 test("actual SDK keeps mixed actor weight separate and clears former generic outputs through the UI",async()=>{
   const bench=harness({humanNamesOverride:["Belly","HumanOther"],wolfNamesOverride:["Custom.Human","Custom.Weight","CLAWHeadEarSize","CLAWTailLength"]});
   await settle();

@@ -1,12 +1,12 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.9**, the sparse-matrix, actor-weight and human-trait candidate.
+This development branch builds **0.4.0-dev.10**, the sparse-matrix, actor-weight and human-trait candidate.
 The published 0.3.0 source baseline remains on `main`. This candidate adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. Dev.8 pins CLAW `4b70482` and its six-profile 0.8 catalog, including
-BHUNP 3.34 Advanced Ver4. The native/WASM kernel shares reserved
+coefficients. Dev.10 pins CLAW `394fa8d` and its seven-profile 0.8 catalog, including
+BHUNP 3.34 Advanced Ver4 and classic UNP Renewal 4.6. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
 simulation are bundled with this plugin.
@@ -105,12 +105,15 @@ Production source is under `src/main/morphbench-plugin`, tests under
 
 ## Use
 
-1. Install the plugin ZIP through Morphbench's manager, explicitly enable it
-   and open its inspector. Updating the same ID requires disabling it, using the
-   manager's update operation, and enabling it again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.9`.
+1. In Morphbench 0.8.8, put the plugin ZIP or folder in `Morphbench/plugins`.
+   New plugins are discovered and enabled automatically; open the **Plugins** menu
+   to check its state and select **Open workspace**, or select its coloured tab.
+   **Load and enable** accepts a package at another path. Updating the same ID
+   requires disabling it, using the manager's update operation, and enabling it
+   again. The shared-kernel plugin
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.10`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
-   **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
+   **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, **classic UNP Renewal 4.6 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
 3. Import a full human coefficient JSON, a retained evidence-fixture JSON with
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
@@ -130,9 +133,9 @@ without requiring that name in a human TRI. Vanilla profiles
 version `game-weight-v1`, use this scalar and can open a human NIF with no morphs.
 The same scalar is available to mixed HIMBO/CBBE/3BA/BHUNP matrices when explicitly
 referenced. A required scalar cannot be omitted or silently replaced with zero.
-All six bundled canonical matrices reference it. The HIMBO/CBBE/3BA/BHUNP profiles
+All seven bundled canonical matrices reference it. The HIMBO/CBBE/3BA/BHUNP profiles
 combine human morphs with an actor-weight contribution whose neutral reference
-is 0.5; Vanilla body variation relies on weight, with the separate human-trait
+is 0.5; Vanilla and classic UNP body variation rely on weight, with the separate human-trait
 rules described below.
 It never multiplies already-effective human coefficients, writes a TRI slider,
 or interpolates the fixed human/wolf NIF geometry. JSON fixture envelopes can
@@ -172,7 +175,7 @@ host catalogue root and explicit pair/live/error states. Human sliders and the
 read-only wolf comparison are separated; the conversion matrix is visible and
 has a direct action beside Apply and its own Apply matrix to previews button
 with draft/applied status. On narrow frames each edge becomes a labeled card;
-the wide editor remains a table. Raw JSON, face/stature and scalar authoring
+the wide editor remains a table. Actor weight is visible beside Apply; raw JSON and face/stature authoring
 remain under Advanced human inputs. Body resources are external: choose the
 folder in Morphbench's host model browser/launcher, then refresh this plugin's
 catalogue. The plugin cannot select a new root through API v1 or install bodies.
@@ -205,7 +208,7 @@ are outside the sparse matrix, rather than lost outputs. The zoom controller
 is unchanged in the 0.8.8 UI check, but a new zoom interaction on that host is
 not claimed by these observations. These are scoped browser and numerical
 checks, not game, colour, physics, artistic quality or public-release acceptance.
-Stable 0.3.0 remains the public download; dev.9 is unfinished feature-branch work.
+Stable 0.3.0 remains the public download; dev.10 is unfinished feature-branch work.
 
 Dev.9 fixes pair authority at the UI boundary. Selecting another resource revokes
 the previous pair immediately and closes its owned previews after sent requests
@@ -238,8 +241,33 @@ to that independently tested package. Native/WASM conformance includes 202 gener
 48 weight, 55 trait and 98 BHUNP cases, ten sparse cases and the 256-edge boundary.
 This qualifies the listed browser and numerical scenarios, not every body family,
 textured appearance, physics, game behavior or a new public release. The shared
-evaluator and its six-profile dependency pin are unchanged. Classic UNP awaits a
-committed upstream catalogue pin; it is not treated as BHUNP.
+evaluator and its six-profile dependency pin were unchanged at that checkpoint.
+Classic UNP was awaiting the committed upstream catalogue pin added in dev.10.
+
+Dev.10 consumes the committed `394fa8d` catalogue and adds **UNP Renewal 4.6
+(classic)** as an independent female family. Its 41 ordered rules match the
+Vanilla female weight/face/stature policy. It has no invented ordinary BodySlide
+sources and is separate from BHUNP. Its human NIF can have no TRI; enable the
+host's **and without morphs** catalogue option. Actor weight is now visible beside
+Apply for every family, and a model without TRI controls explains which inputs
+remain available. Human neutral geometry stays fixed at the selected NIF.
+Custom source/target names in authored matrix presets remain supported; selecting
+UNP for game XML exports it independently of the male family.
+
+The exact dev.10 ZIP
+`95cd690ba36e69c731a077bd2d6eb953321f97b84b2b3581aa33f15793ede9ac`
+(210,125 bytes, ten browser assets) passed scoped actual Application 0.8.8 browser
+checks with a copied classic UNP NIF and CLAW female NIF/TRI. It opened with zero
+human TRI controls and applied 19 wolf targets. Weight 0 and 1 exports each retained
+all 6,850 human and 99,023 wolf vertices; all 31 native output slots matched actual
+preview coefficients bit-for-bit at both weights. Wolf geometry changed; human
+geometry correctly stayed fixed. Browser-exported UNP/HIMBO XML parsed natively,
+and importing that XML back through pasted text restored the 41-edge UNP matrix.
+Six previous catalogue profiles and the compiled shared kernel remain identical.
+Sixteen builder checks, 63 pure/native checks (including 25 UNP weight/trait cases),
+38 actual packaged-SDK checks, 28 controller and 16 pair-state checks passed.
+This is browser/numerical acceptance, with no game or texture/physics claims and
+no new public release. Earlier dev.9 HIMBO observations retain their exact scope.
 
 Dev.8 adds the independently measured BHUNP matrix to calculation, model binding
 and game XML export. It requires a BHUNP 3.34 **Advanced Ver4** body and matching
@@ -295,7 +323,7 @@ replacing the current matrix. Pasting the same JSON into the matrix import box
 avoids a native file picker. **Restore canonical matrix** discards local matrix
 edits; it does not apply any coefficients. **Export mapping XML** produces the
 native `MorphLinkProfiles` configuration with exactly one male profile
-(HIMBO or Vanilla) and one female profile (CBBE, 3BA, BHUNP or Vanilla), plus explicit
+(HIMBO or Vanilla) and one female profile (CBBE, 3BA, BHUNP, UNP or Vanilla), plus explicit
 defaults. Other families are omitted. Select the edited family for its sex before exporting so its edits cannot
 be silently discarded. Standalone XML export can contain one profile.
 
@@ -439,8 +467,8 @@ node --require './target/plugin/matrix-kernel.js' src/test/morphbench-plugin/hum
 
 The builder reads the hash-pinned external `src/main/resources/profiles/MorphLinks.xml`,
 validates supported-family subsets and defaults, and preserves surviving XML order.
-The bundled canonical catalog offers the three morphed human families and two
-sex-specific Vanilla profiles. Before packaging, Node.js validates every catalog
+The bundled canonical catalog offers four morphed human families, two
+sex-specific Vanilla profiles and classic female UNP. Before packaging, Node.js validates every catalog
 matrix against the actual generated WASM's reserved-source exports. It emits ten local browser
 assets in a deterministic ZIP, with an external catalog and SHA-256 build report.
 The SDK is loaded from the host and is never copied into the package. The host's

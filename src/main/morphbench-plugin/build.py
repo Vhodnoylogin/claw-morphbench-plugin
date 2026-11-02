@@ -116,7 +116,7 @@ def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False, max_rules:
         metadata = dict(child.attrib)
         profile_id, family = metadata["id"], metadata["family"]
         if (not all(identifier(value) for value in metadata.values()) or profile_id in ids
-                or (family, metadata["sex"]) in families or family not in {"CBBE", "3BA", "BHUNP", "HIMBO", "Vanilla"}
+                or (family, metadata["sex"]) in families or family not in {"CBBE", "3BA", "BHUNP", "UNP", "HIMBO", "Vanilla"}
                 or metadata["sex"] not in {"male", "female"}
                 or (family != "Vanilla" and metadata["sex"] != ("male" if family == "HIMBO" else "female"))):
             raise ValueError("Invalid, duplicate or wrong-sex resource family")

@@ -142,7 +142,11 @@
   }
   function buildSliders() {
     el("shared-sliders").replaceChildren(); sliderRows.length = 0;
-    const pair = controller && controller.pair; if (!pair) return;
+    const pair = controller && controller.pair;
+    el("human-control-status").textContent = !pair ? "Open a comparison pair to inspect its human body controls." :
+      pair.human.names.some(name => core.sourceKind(name) === 0) ? "Body TRI controls affect the human model and its mapped wolf outputs." :
+      "This human model has no body TRI controls. Set actor weight above; optional face/stature values are in Advanced human inputs. The selected human NIF keeps its fixed geometry.";
+    if (!pair) return;
     for (const name of pair.human.names.filter(name => core.sourceKind(name) === 0)) {
       const row = document.createElement("label"); row.className = "morph-row";
       const title = document.createElement("span"); title.textContent = name; row.appendChild(title);
@@ -259,7 +263,7 @@
       fn.value = rule.function; fn.addEventListener("change", () => matrixChange(candidate => {
         const edge = candidate.rules[index]; edge.function = fn.value; delete edge.exponent; delete edge.value;
         if (fn.value === "constant") { edge.source = ""; edge.value = 1; }
-        else if (!edge.source) edge.source = (controller && controller.pair && controller.pair.human.names[0]) || (candidate.family === "Vanilla" ? "$actor.weight" : "BodyMass");
+        else if (!edge.source) edge.source = (controller && controller.pair && controller.pair.human.names[0]) || (["Vanilla", "UNP"].includes(candidate.family) ? "$actor.weight" : "BodyMass");
         if (fn.value === "power") edge.exponent = 2;
       })); addControl(row, fn);
       for (const field of ["gain", "cap"]) {
@@ -511,7 +515,7 @@
   });
   try {
     for (const profile of catalog.profiles) { const option = document.createElement("option"); option.value = profile.id;
-      option.textContent = profile.family + " " + profile.version + (profile.family === "BHUNP" ? " Advanced Ver4" : "") + " (" + profile.sex + ")"; el("profile").appendChild(option); }
+      option.textContent = profile.family + " " + profile.version + (profile.family === "BHUNP" ? " Advanced Ver4" : profile.family === "UNP" ? " Renewal (classic, weight and traits)" : "") + " (" + profile.sex + ")"; el("profile").appendChild(option); }
     resetMatrix(); el("provenance").textContent = "Mapping XML SHA-256: " + catalog.source.sha256; calculate(); buttons();
     sdk.connect().then(async info => {
       controller = new window.CLAWPreview.PreviewController(sdk, catalog, { onState: pairChanged }); supported = controller.supports(info);

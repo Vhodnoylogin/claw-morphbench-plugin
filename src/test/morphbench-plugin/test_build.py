@@ -21,7 +21,8 @@ class BuildTests(unittest.TestCase):
                           for profile in catalog["profiles"][3:]}, {
             ("CLAW.VanillaMale.Weight1", "Vanilla", "male", "game-weight-v1"),
             ("CLAW.VanillaFemale.Weight1", "Vanilla", "female", "game-weight-v1"),
-            ("CLAW.BHUNP.3.34.AdvancedV4", "BHUNP", "female", "3.34")})
+            ("CLAW.BHUNP.3.34.AdvancedV4", "BHUNP", "female", "3.34"),
+            ("CLAW.UNP.4.6.Weight1", "UNP", "female", "4.6")})
         self.assertEqual(catalog["source"]["sha256"], builder.hashlib.sha256(self.source).hexdigest())
         self.assertEqual(catalog["profiles"][0]["rules"][4]["source"], "Arms")
         self.assertGreater(sum(len(profile["rules"]) for profile in catalog["profiles"]), 200)
@@ -163,6 +164,27 @@ class BuildTests(unittest.TestCase):
         for body in (male + male.replace('id="Male"', 'id="Second"'), male.replace('sex="male"', 'sex="other"')):
             with self.assertRaisesRegex(ValueError, 'wrong-sex resource family'):
                 builder.catalog_from_bytes(wrap(body))
+
+    def test_classic_unp_is_female_and_preserves_vanilla_weight_trait_rules_without_body_aliases(self):
+        profiles = builder.catalog_from_bytes(self.source)["profiles"]
+        unp = next(profile for profile in profiles if profile["family"] == "UNP")
+        vanilla = next(profile for profile in profiles if profile["family"] == "Vanilla" and profile["sex"] == "female")
+        self.assertEqual(len(unp["rules"]), 41)
+        self.assertEqual(unp["rules"], vanilla["rules"])
+        self.assertTrue(all(not rule["source"] or rule["source"] == "$actor.weight"
+                            or rule["source"].startswith("$human.") for rule in unp["rules"]))
+        invalid = self.source.replace(b'id="CLAW.UNP.4.6.Weight1" family="UNP" version="4.6" sex="female"',
+                                      b'id="CLAW.UNP.4.6.Weight1" family="UNP" version="4.6" sex="male"')
+        self.assertNotEqual(invalid, self.source)
+        with self.assertRaisesRegex(ValueError, "wrong-sex resource family"):
+            builder.catalog_from_bytes(invalid)
+
+    def test_custom_unp_matrix_keeps_generic_source_target_names(self):
+        source = ('<MorphLinkProfiles schemaVersion="1"><Profile id="Custom.UNP" family="UNP" version="4.6" '
+                  'sex="female" calibration="custom"><Rule source="Author.Human" target="Author.Wolf" '
+                  'gain="0.5" cap="0.75" /></Profile></MorphLinkProfiles>').encode()
+        profile = builder.catalog_from_bytes(source)["profiles"][0]
+        self.assertEqual(profile["rules"], [{"source": "Author.Human", "target": "Author.Wolf", "gain": .5, "cap": .75}])
 
 
 if __name__ == "__main__":
