@@ -12,7 +12,13 @@
   const matrixControls = [];
   const traitRows = []; let traitNamesKey = null;
   function status(message, error = false) { el("status").textContent = message; el("status").className = error ? "error" : ""; }
-  function showError(error) { if (error.code !== "superseded") status((error.code ? error.code + ": " : "") + error.message, true); }
+  function showError(error) {
+    if (error.code === "superseded") return;
+    const missingHuman = error.message.includes("Human model is missing input morph:");
+    if (missingHuman) el("human-options").open = true;
+    status((error.code ? error.code + ": " : "") + error.message +
+      (missingHuman ? " Use Reset human morphs in Human presets, weight and other inputs below, then move the new body's sliders." : ""), true);
+  }
   function format(value) { return Number(value.toPrecision(9)).toString(); }
   function values() { return core.parseHuman(el("human").value); }
   function humanTraits() { return core.validateTraits(JSON.parse(el("human-traits").value || "{}")); }
@@ -33,7 +39,7 @@
     for (const id of ["profile", "human-model", "wolf-model", "import", "human", "preset", "weight", "actor-weight", "human-traits", "sidebar-role"]) el(id).disabled = busy;
     for (const row of sliderRows) { row.range.disabled = busy || !selected; row.number.disabled = busy || !selected; }
     for (const row of traitRows) { row.available.disabled = busy; row.number.disabled = busy || !row.available.checked; }
-    for (const id of ["matrix-import", "matrix-paste", "matrix-paste-load", "matrix-reset", "matrix-add", "matrix-constant", "matrix-import-toggle"]) el(id).disabled = busy;
+    for (const id of ["matrix-import", "matrix-paste", "matrix-paste-load", "matrix-reset", "matrix-add", "matrix-constant", "matrix-import-toggle", "human-reset"]) el(id).disabled = busy;
     for (const { node, locked } of matrixControls) node.disabled = busy || locked;
     el("geometry-read").disabled = !selected || busy || !geometrySupported;
     el("geometry-export").disabled = !geometry;
@@ -558,6 +564,16 @@
     status("Loaded human preset coefficients.");
     if (selectedPair()) return applyPair();
   }
+  el("human-reset").addEventListener("click", () => exportChecked(() => {
+    if (busy) return;
+    ++inputRevision;
+    el("human").value = "{}"; provenance = Object.create(null);
+    inputLabel = "Reset human preview coefficients"; presets = [];
+    el("preset-controls").hidden = true;
+    calculate(); refreshSliderValues();
+    status("Human morph values reset. Move the current body's sliders to shape both models.");
+    if (selectedPair()) return applyPair();
+  }));
   for (const id of ["preset", "weight"]) el(id).addEventListener("change", () => {
     try { return loadPreset(); } catch (error) { showError(error); } });
   el("import").addEventListener("change", async () => {

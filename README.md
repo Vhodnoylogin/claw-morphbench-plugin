@@ -6,7 +6,7 @@ the immediately editable matrix and Export/Import matrix in that order. Resource
 configuration and diagnostics are collapsed; valid edits immediately update both
 previews without Calculate/Apply/Live controls. The shared evaluator and host API
 are unchanged. Replacement additionally preflights the retained full human input
-vector before retiring a working model. The packaged consumer passes 53 public-SDK
+vector before retiring a working model. The packaged consumer passes 55 public-SDK
 harness checks; rendered-browser acceptance is recorded separately.
 This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
@@ -135,6 +135,13 @@ Production source is under `src/main/morphbench-plugin`, tests under
    numeric/vertex diagnostics are collapsed secondary controls. Invalid edits or
    imports preserve the last valid matrix and working pair. A temporarily blank
    numeric field remains editable and is never treated as zero.
+
+Changing body family keeps the entered human vector until you explicitly reset it.
+If the new model lacks a retained input, the error opens **Human presets, weight
+and other inputs** and points to **Reset human morphs**. That button clears body
+coefficients and their provenance, immediately updates an open pair, and preserves
+the matrix, actor weight and face/stature inputs. Advanced JSON editing is not
+needed to recover.
 
 On a host advertising `models.selection.subscribe`, **Left model list replaces**
 selects Human or Werewolf. Choosing a mesh in the host's left sidebar replaces only

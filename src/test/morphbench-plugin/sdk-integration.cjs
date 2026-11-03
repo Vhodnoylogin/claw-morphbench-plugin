@@ -770,7 +770,7 @@ test("pending model replacement locks matrix rows and pasted imports until its v
   bench.selection({root:"isolated",name:"human-next.nif"});await entered;
   const row=bench.element("matrix-rows").children[0],gain=row.children[4].children[0];
   assert.equal(gain.disabled,true);assert.equal(row.children[1].children[0].disabled,true);
-  for(const id of ["matrix-paste","matrix-paste-load","matrix-import","matrix-reset","matrix-add","matrix-constant"])assert.equal(bench.element(id).disabled,true,id);
+  for(const id of ["matrix-paste","matrix-paste-load","matrix-import","matrix-reset","matrix-add","matrix-constant","human-reset"])assert.equal(bench.element(id).disabled,true,id);
   gain.value="0.123";await gain.fire("input");bench.element("matrix-paste").value="{}";await bench.element("matrix-paste-load").fire("click");
   await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,accepted);
   release();await settle();await settle();
@@ -857,4 +857,52 @@ test("Export matrix directly requests one complete normalized host download with
   const download=requests[0].params;assert.equal(download.format,"json");assert.equal(download.filename,profile.id+".wolf-matrix.json");
   assert.equal(JSON.parse(download.text).kind,"claw-wolf-matrix");assert.equal(JSON.parse(download.text).profile.rules.length,0);
   assert.equal(download.text,bench.element("export-text").value);assert.equal(bench.element("export-panel").open,false);
+});
+
+
+test("Reset human morphs recovers missing imported keys and also clears them before opening a new pair",async()=>{
+  const bench=harness();await open(bench);
+  const handles=[...bench.previews.keys()],before=bench.calls.length;
+  bench.element("human").value='{"TorsoBelly":1}';await bench.element("human").fire("input");
+  assert.match(bench.element("status").textContent,/Human model is missing input morph: TorsoBelly/);
+  assert.match(bench.element("status").textContent,/Reset human morphs/);assert.equal(bench.element("human-options").open,true);
+  assert.deepEqual([...bench.previews.keys()],handles);assert.equal(bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set").length,0);
+  await bench.element("human-reset").fire("click");assert.equal(bench.element("human").value,"{}");
+  assert.deepEqual([...bench.previews.keys()],handles);assert.match(bench.element("matrix-apply-status").textContent,/Both previews are up to date/);
+  const belly=()=>bench.element("shared-sliders").children.find(row=>row.children[0].textContent==="Belly").children[1];
+  belly().value="0.5";await belly().fire("input");assert.equal(bench.previews.get(handles[0]).values.Belly,.5);
+  assert.ok(bench.previews.get(handles[1]).values.CLAWTorsoBellyRound>0);
+  await bench.element("close-pair").fire("click");
+  bench.element("import").files=[{name:"old-human.json",text:async()=>'{"TorsoBelly":1}'}];await bench.element("import").fire("change");
+  assert.deepEqual(JSON.parse(bench.element("human").value),{TorsoBelly:1});const withoutPair=bench.calls.length;
+  await bench.element("human-reset").fire("click");assert.equal(bench.element("human").value,"{}");assert.equal(bench.previews.size,0);
+  assert.equal(bench.calls.length,withoutPair,"Reset without an open pair performs no host requests");
+  await open(bench);assert.equal(bench.previews.size,2);assert.match(bench.element("matrix-apply-status").textContent,/Both previews are up to date/);
+  belly().value="0.25";await belly().fire("input");assert.equal(bench.previews.get("opaque:3").values.Belly,.25);
+  assert.ok(bench.previews.get("opaque:4").values.CLAWTorsoBellyRound>0);
+});
+
+test("Reset human morphs clears acknowledged human outputs while retaining matrix weight traits and owned handles",async()=>{
+  const bench=harness({humanNamesOverride:["Belly","HumanOther"]});await open(bench);
+  const traits={"$human.height":1.125},human={Belly:.8,HumanOther:-.25},weight=.75;
+  bench.element("import").files=[{name:"human-observation.json",text:async()=>JSON.stringify({humanValues:human,actorWeight:weight,humanTraits:traits,humanValueProvenance:{Belly:"Retained test observation"}})}];await bench.element("import").fire("change");
+  const profile={...catalog.profiles[0],rules:[
+    {source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1},
+    {source:"$actor.weight",target:"CLAWTailLength",gain:1,cap:1},
+    {source:"$human.height",target:"CLAWHeadEarSize",gain:.2,cap:1}
+  ]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  await bench.element("matrix-export").fire("click");const matrix=bench.element("export-text").value,handles=[...bench.previews.keys()],before=bench.calls.length;
+  assert.equal(bench.previews.get(handles[0]).values.HumanOther,-.25);assert.equal(bench.previews.get(handles[1]).values["Unowned.WolfControl"],.4);
+  await bench.element("human-reset").fire("click");
+  assert.equal(bench.element("human").value,"{}");assert.deepEqual([...bench.previews.keys()],handles);
+  assert.equal(bench.element("actor-weight").value,String(weight));assert.deepEqual(JSON.parse(bench.element("human-traits").value),traits);
+  assert.equal(bench.element("preset-controls").hidden,true);assert.match(bench.element("input-provenance").textContent,/Reset human preview coefficients.*0 per-name provenance/);
+  assert.equal(bench.previews.get(handles[0]).values.Belly,0);assert.equal(bench.previews.get(handles[0]).values.HumanOther,0);
+  const expected=core.evaluateMatrix(profile,{},weight,traits).values;
+  for(const[name,value]of Object.entries(expected))assert.equal(bench.previews.get(handles[1]).values[name],value,name);
+  assert.equal(bench.previews.get(handles[1]).values["Unowned.WolfControl"],.4);
+  const writes=bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set");assert.equal(writes.length,2);
+  assert.deepEqual(writes.map(call=>call.params.preview),handles);assert.ok(!bench.calls.slice(before).some(call=>["previews.close","previews.create"].includes(call.method)));
+  await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,matrix);
 });

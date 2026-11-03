@@ -48,7 +48,9 @@
   <p id="human-control-status" class="muted" role="status">Open a comparison pair to inspect its human body controls.</p>
   <label for="filter">Filter full human morph controls</label><input id="filter" type="search" placeholder="Morph name">
   <div id="shared-sliders"></div>
-    <details class="human-options"><summary>Human presets, weight and other inputs</summary>
+    <details id="human-options" class="human-options"><summary>Human presets, weight and other inputs</summary>
+      <button id="human-reset" type="button">Reset human morphs</button>
+      <p class="muted">Clear entered body morph values. The matrix, actor weight and face/stature inputs are retained.</p>
   <label class="file-label" for="import">Import human JSON, evidence fixture or BodySlide preset XML</label>
   <input id="import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
   <div id="preset-controls" hidden>
