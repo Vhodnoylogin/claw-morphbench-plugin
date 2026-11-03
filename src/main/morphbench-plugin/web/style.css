@@ -1,21 +1,27 @@
-:root { color-scheme: dark light; font: 13px/1.5 system-ui, sans-serif; }
-body { margin: 16px; max-width: 64rem; }
+:root { color-scheme: dark; font: 14px/1.45 system-ui, sans-serif; background: #172127; color: #e3ecf0; accent-color: #7db7f8; }
+body { margin: 16px; min-width: 0; }
 h1 { font-size: 1.25rem; margin: 0 0 12px; }
 h2 { font-size: 1rem; margin: 18px 0 8px; }
 label { display: block; font-weight: 600; margin-top: 12px; }
 select, textarea { box-sizing: border-box; width: 100%; padding: 8px; }
 input[type="search"] { box-sizing: border-box; width: 100%; padding: 7px; }
 .inline { display: flex; gap: 8px; align-items: center; }
-.morph-row { display: grid; grid-template-columns: minmax(7rem,1fr) minmax(6rem,1fr) 6.5rem; gap: 8px; align-items: center; border-top: 1px solid #8884; padding-top: 7px; font-size: 12px; }
+.morph-row { display: grid; grid-template-columns: minmax(7rem,1fr) minmax(5rem,1fr) 5rem; gap: 10px; align-items: center; border-top: 1px solid #8883; padding: 8px 0; margin: 0; font-size: 13px; }
 .morph-row span { overflow-wrap: anywhere; }
 .morph-row input { min-width: 0; width: 100%; box-sizing: border-box; }
 .morph-row small { grid-column: 1 / -1; font-weight: normal; opacity: .72; overflow-wrap: anywhere; }
 .morph-row[hidden] { display: none; }
-#shared-sliders { max-height: 32rem; overflow: auto; margin-top: 8px; }
+#shared-sliders { max-height: 24rem; overflow: auto; margin-top: 8px; padding-right: 6px; }
 textarea { font: 12px/1.5 ui-monospace, Consolas, monospace; }
 .muted { opacity: .76; font-size: 12px; overflow-wrap: anywhere; }
 .actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
-button { padding: 7px 10px; cursor: pointer; }
+button { padding: 8px 12px; cursor: pointer; border: 1px solid #536c7c; border-radius: 5px; background: #263945; color: inherit; }
+button:hover:not(:disabled) { background: #334f61; border-color: #7db7f8; }
+input, select, textarea { background: #111c22; color: inherit; border: 1px solid #49606d; border-radius: 4px; }
+input[type="number"] { padding: 5px; }
+input[type="range"] { padding: 0; border: 0; }
+input[aria-invalid="true"] { border-color: #ff9b9b; outline: 1px solid #ff9b9b; }
+input:focus-visible, select:focus-visible, textarea:focus-visible, button:focus-visible, summary:focus-visible { outline: 2px solid #7db7f8; outline-offset: 2px; }
 button:disabled { cursor: default; opacity: .5; }
 .error { color: light-dark(#a21717, #ff9b9b); }
 details { border-top: 1px solid #8886; padding: 8px 0; }
@@ -45,11 +51,22 @@ th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
 .sidebar-selection { padding: 9px; border: 1px solid #7aa6df88; border-radius: 5px; margin-bottom: 12px; }
 .sidebar-selection label { margin-top: 0; }
 .sidebar-selection p { margin-bottom: 0; }
-.matrix-panel { margin-top: 18px; padding: 12px; border: 1px solid #4fafa388; border-radius: 5px; }
+.matrix-panel { margin-top: 20px; padding: 12px; border: 1px solid #7db7f877; border-radius: 6px; }
 .matrix-panel h2 { margin-top: 0; }
 .matrix-panel .table-wrap { max-height: 24rem; }
 #matrix-table thead { position: sticky; top: 0; background: Canvas; }
 #live-status { margin: 5px 0 12px; }
+.section-hint { margin: 4px 0 10px; color: #b3c4ce; font-size: 12px; }
+.settings { padding: 10px; border: 1px solid #49606d; border-radius: 6px; }
+.settings summary { display: flex; flex-wrap: wrap; gap: 4px 12px; align-items: baseline; }
+.settings summary .muted { font-weight: normal; }
+.matrix-files { padding: 10px 0; border-top: 1px solid #49606d; }
+.matrix-files button { flex: 1; }
+#matrix-export { background: #284d69; border-color: #7db7f8; }
+#status { padding: 6px 10px; font-size: 12px; }
+#human-control-status { margin: 4px 0; }
+.human-options { margin-top: 10px; }
+#diagnostics { margin-top: 18px; }
 
 /* Keep the same labeled controls/handlers; only presentation changes in a narrow host frame. */
 @media (max-width: 700px) {
@@ -63,7 +80,7 @@ th:first-child, td:first-child { text-align: left; overflow-wrap: anywhere; }
   #matrix-table td::before { content: attr(data-label); display: block; margin-bottom: 3px; font-weight: 600; opacity: .8; }
   #matrix-table td:first-child { display: flex; align-items: baseline; gap: 7px; font-weight: 700; }
   #matrix-table input, #matrix-table select, #matrix-table input[type="text"] { min-width: 0; width: 100%; max-width: 100%; padding: 6px; }
-  .matrix-panel .table-wrap { max-height: min(70vh, 36rem); }
+  .matrix-panel .table-wrap { max-height: 24rem; }
   .matrix-panel { padding: 8px; }
   .order-controls button { padding: 5px 12px; }
 }

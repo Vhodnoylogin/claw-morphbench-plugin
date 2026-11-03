@@ -15,19 +15,13 @@
   <script src="main.js" defer></script>
 </head>
 <body>
-  <h1>CLAW human/wolf comparison</h1>
+  <details id="resources" class="settings" open>
+    <summary>Model settings <span id="workspace-summary" class="muted"></span></summary>
   <div id="sidebar-selection" class="sidebar-selection" hidden>
     <label for="sidebar-role">Left model list replaces</label>
     <select id="sidebar-role"><option value="human">Human</option><option value="wolf">Werewolf</option></select>
     <p class="muted">Pick a model on the left to replace this side. The other model and your matrix stay in place. Select the actual human family below; it is never guessed from a filename.</p>
   </div>
-  <ol class="workflow" aria-label="Comparison workflow">
-    <li><b>Choose resources.</b> Point Morphbench at your body files, select a human family and both models, then open the pair.</li>
-    <li><b>Try a human shape.</b> Import a BodySlide preset and Apply current values, or move a human slider to update both models.</li>
-    <li><b>Tune the link.</b> Edit the conversion matrix below, apply it and export your changes. Wolf values show the calculated result.</li>
-  </ol>
-  <p id="status" role="status" aria-live="polite">Connecting to Morphbench…</p>
-  <h2>1. Human and werewolf resources</h2>
   <p id="paired-support" class="muted" role="status">Checking independent preview capabilities…</p>
   <p id="catalog-root" class="resource-root">Reading Morphbench's current model folder…</p>
   <p class="muted">Body files are external. This plugin does not download, install or activate HIMBO, CBBE, 3BA, BHUNP, UNP or CLAW. Choose the folder in Morphbench's main browser/launcher first, then Refresh catalog here. For a combined comparison that folder must contain both human and wolf resources. The family selector declares which body you actually supplied. BHUNP targets 3.34 Advanced Ver4 with Build Morphs enabled. Classic UNP Renewal 4.6 uses actor weight and available face/stature traits; its human NIF needs no TRI. Enable the host's "and without morphs" option to list such files.</p>
@@ -46,8 +40,15 @@
   <p id="zoom-status" class="muted" role="status">Zoom synchronization activates after opening a supported pair.</p>
   <p id="pair-status" class="pair-state" role="status">No comparison pair is open.</p>
   <p class="muted">Declare the actual resource family and sex. Each panel uses its selected fixed NIF. For a weight-100 comparison select both matching _1 files. Intermediate neutral geometry weight is not interpolated.</p>
-  <h2>2. Human morphs — editable</h2>
-  <p>The human controls drive both models. Wolf coefficients are calculated and read-only.</p>
+  </details>
+  <p id="status" role="status" aria-live="polite">Connecting to Morphbench…</p>
+  <section aria-labelledby="human-title">
+    <h2 id="human-title">Human morphs</h2>
+    <p class="section-hint">Move a slider or enter a value. Both models update immediately.</p>
+  <p id="human-control-status" class="muted" role="status">Open a comparison pair to inspect its human body controls.</p>
+  <label for="filter">Filter full human morph controls</label><input id="filter" type="search" placeholder="Morph name">
+  <div id="shared-sliders"></div>
+    <details class="human-options"><summary>Human presets, weight and other inputs</summary>
   <label class="file-label" for="import">Import human JSON, evidence fixture or BodySlide preset XML</label>
   <input id="import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
   <div id="preset-controls" hidden>
@@ -55,19 +56,8 @@
     <label for="weight">Preset coefficient weight 0..1</label><input id="weight" type="number" min="0" max="1" step="0.01" value="1">
     <p class="muted">Interpolate preset coefficients once. This control does not blend the selected NIF's neutral weight geometry.</p>
   </div>
-  <div class="actions">
-    <button id="evaluate" type="button">Calculate only</button>
-    <button id="apply" type="button" disabled>Apply current values</button>
-    <button id="show-matrix" type="button">Edit conversion matrix</button>
-    <button id="reset" type="button" disabled>Zero owned wolf outputs</button>
-  </div>
-  <label class="inline"><input id="live" type="checkbox" disabled> Update both models when I move human sliders</label>
-  <p id="live-status" class="muted" role="status"></p>
   <label for="actor-weight">Actor weight — normalized 0..1</label><input id="actor-weight" type="number" min="0" max="1" step="0.01" value="0.5">
   <p id="actor-weight-provenance" class="muted">Manual preview actor weight, initially 0.5; not a measured game value. This separate scalar supplies $actor.weight to matrices. It never writes a human TRI slider or blends fixed NIF geometry.</p>
-  <p id="human-control-status" class="muted" role="status">Open a comparison pair to inspect its human body controls.</p>
-  <label for="filter">Filter full human morph controls</label><input id="filter" type="search" placeholder="Morph name">
-  <div id="shared-sliders"></div>
   <details><summary>Advanced human inputs — JSON, face and stature</summary>
   <label for="human">Human values (finite JSON map)</label>
   <textarea id="human" rows="8" spellcheck="false">{}</textarea>
@@ -80,29 +70,52 @@
   <p class="muted">Already-effective JSON coefficients are never multiplied by weight again. Names outside the wolf mapping still affect the human preview. Omitted names use preview zero; this is not evidence of an actual game value.</p>
   <p id="input-provenance" class="muted"></p>
   </details>
-  <details open><summary>Werewolf values — read-only numeric comparison</summary>
+    </details>
+  </section>
+  <section id="matrix-panel" class="matrix-panel" aria-labelledby="matrix-title">
+    <h2 id="matrix-title">Human → wolf matrix</h2>
+    <p class="section-hint">Edit a coefficient or function. Valid changes update the previews immediately.</p>
+    <p id="matrix-apply-status" role="status" class="muted"></p>
+    <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">
+    <div class="table-wrap"><table id="matrix-table"><thead><tr><th>Edge</th><th>Human source</th><th>Wolf target</th><th>Function</th><th>Gain</th><th>Target cap</th><th>Exponent / constant</th><th>Order / remove</th></tr></thead><tbody id="matrix-rows"></tbody></table></div>
+    <datalist id="human-names"></datalist>
+    <div class="actions"><button id="matrix-add" type="button">Add source edge</button><button id="matrix-constant" type="button">Add constant edge</button></div>
+    <div class="actions matrix-files">
+      <button id="matrix-export" type="button">Export matrix</button>
+      <button id="matrix-import-toggle" type="button">Import matrix</button>
+    </div>
+    <details id="matrix-import-panel"><summary>Import a matrix from text or file</summary>
+      <label for="matrix-paste">Matrix JSON or XML</label>
+      <textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea>
+      <button id="matrix-paste-load" type="button">Import pasted matrix</button>
+      <label for="matrix-import">Choose a matrix file</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
+    </details>
+  <details id="export-panel" hidden><summary id="export-title">Export text</summary>
+    <p class="muted">All export text is available in pages of up to 32 KiB. Save every page in order for the complete UTF-8 file. Prepare host download always sends the complete export; the host reports a request, not proof of a saved file.</p>
+    <div class="export-navigation" role="group" aria-label="Export text pages">
+      <button id="export-previous" type="button">Previous page</button><button id="export-next" type="button">Next page</button>
+      <label for="export-page">Go to page</label><input id="export-page" type="number" min="1" step="1" value="1"><button id="export-go" type="button">Go</button>
+    </div>
+    <p id="export-page-status" class="muted" role="status" aria-live="polite"></p>
+    <div class="actions"><button id="export-select" type="button">Select current page text</button><button id="export-download" type="button">Prepare host download</button></div>
+    <textarea id="export-text" rows="12" readonly spellcheck="false" aria-label="Export text — current page" aria-describedby="export-page-status"></textarea>
+  </details>
+    <details><summary>Matrix options and game XML</summary>
+      <p id="matrix-status" class="muted"></p>
+      <button id="matrix-reset" type="button">Restore canonical matrix</button>
+    <label for="game-male-family">Installed male body family for game configuration</label><select id="game-male-family"><option value="HIMBO">HIMBO</option><option value="Vanilla">Vanilla</option></select>
+    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="BHUNP">BHUNP Advanced Ver4</option><option value="UNP">UNP Renewal 4.6 (classic)</option><option value="Vanilla">Vanilla</option></select>
+      <button id="matrix-xml" type="button">Export game configuration XML</button>
+      <p class="muted">Ordered sparse edges use the shared CLAW evaluator. Absent edges contribute zero. Target sums clamp to [0,1], then multiply by their shared target cap. Zero/near-zero gains are omitted on export.</p>
+    </details>
+  </section>
+  <details id="diagnostics"><summary>Diagnostics and vertex inspection</summary>
+  <details><summary>Werewolf values — read-only numeric comparison</summary>
     <p id="comparison-status" class="muted"></p>
     <label for="snapshot-import">Optional reference coefficient snapshot JSON (diagnostic; not a wolf preset)</label><input id="snapshot-import" type="file" accept=".json,application/json">
     <div class="actions"><button id="snapshot-export" type="button">Export calculated coefficient snapshot</button><button id="snapshot-clear" type="button">Clear reference</button></div>
     <div class="table-wrap"><table><thead id="comparison-head"></thead><tbody id="comparison-rows"></tbody></table></div>
   </details>
-  <section id="matrix-panel" class="matrix-panel" aria-labelledby="matrix-title">
-    <h2 id="matrix-title">Conversion matrix — edit human → wolf links</h2>
-    <p class="muted">Each ordered edge contributes gain × function(human coefficient). A constant edge supplies a bias. Target sums clamp to [0,1], then multiply by the target cap. Sparse absent edges contribute zero.</p>
-    <p id="matrix-status" class="muted"></p>
-    <div class="actions"><button id="matrix-apply" type="button" disabled>Apply matrix to previews</button></div>
-    <p id="matrix-apply-status" class="muted" role="status">Open a comparison pair before applying the matrix.</p>
-    <label for="matrix-import">Import wolf matrix preset JSON or XML</label><input id="matrix-import" type="file" accept=".json,.xml,application/json,application/xml,text/xml">
-    <details><summary>Paste wolf matrix preset JSON or XML</summary><textarea id="matrix-paste" rows="5" spellcheck="false" aria-label="Wolf matrix preset JSON or XML text"></textarea><button id="matrix-paste-load" type="button">Load pasted wolf preset</button></details>
-    <label for="game-male-family">Installed male body family for game configuration</label><select id="game-male-family"><option value="HIMBO">HIMBO</option><option value="Vanilla">Vanilla</option></select>
-    <label for="game-female-family">Installed female body family for game configuration</label><select id="game-female-family"><option value="3BA">3BA</option><option value="CBBE">CBBE</option><option value="BHUNP">BHUNP Advanced Ver4</option><option value="UNP">UNP Renewal 4.6 (classic)</option><option value="Vanilla">Vanilla</option></select>
-    <div class="actions"><button id="matrix-export" type="button">Export wolf preset JSON</button><button id="matrix-xml" type="button">Export game configuration XML</button><button id="matrix-reset" type="button">Restore canonical matrix</button></div>
-    <label for="matrix-filter">Filter matrix by source or target</label><input id="matrix-filter" type="search" placeholder="Morph name">
-    <div class="table-wrap"><table id="matrix-table"><thead><tr><th>Edge</th><th>Human source</th><th>Wolf target</th><th>Function</th><th>Gain</th><th>Target cap</th><th>Exponent / constant</th><th>Order / remove</th></tr></thead><tbody id="matrix-rows"></tbody></table></div>
-    <datalist id="human-names"></datalist>
-    <div class="actions"><button id="matrix-add" type="button">Add source edge</button><button id="matrix-constant" type="button">Add constant edge</button></div>
-    <p class="muted">Functions: linear x; positive max(x,0); negative max(-x,0); smoothstep on x clamped to [0,1]; power preserves sign on x clamped to [-1,1], exponent 1..8. Matrix edits calculate locally; Apply writes the pair.</p>
-  </section>
   <p class="muted">Wolf output coefficients are nonnegative. Negative sums clip at zero; reductions use explicit lean targets in compatible resources. This preview does not prove game physics or visual quality.</p>
   <p id="provenance" class="muted"></p>
   <p id="unmapped" class="muted"></p>
@@ -116,17 +129,8 @@
     <div class="table-wrap"><table><thead><tr><th>Vertex</th><th>Initial x,y,z</th><th>Current x,y,z</th><th>Delta x,y,z</th><th>Distance</th></tr></thead><tbody id="geometry-rows"></tbody></table></div>
     <p class="muted">Delta = current − selected NIF rest position, in model space and game units. This is the host's browser geometry with quantized morph deltas. Shapes are read sequentially; no camera transform or runtime skinning is included.</p>
   </details>
-  <details id="export-panel" hidden><summary id="export-title">Export text</summary>
-    <p class="muted">All export text is available in pages of up to 32 KiB. Save every page in order for the complete UTF-8 file. Prepare host download always sends the complete export; the host reports a request, not proof of a saved file.</p>
-    <div class="export-navigation" role="group" aria-label="Export text pages">
-      <button id="export-previous" type="button">Previous page</button><button id="export-next" type="button">Next page</button>
-      <label for="export-page">Go to page</label><input id="export-page" type="number" min="1" step="1" value="1"><button id="export-go" type="button">Go</button>
-    </div>
-    <p id="export-page-status" class="muted" role="status" aria-live="polite"></p>
-    <div class="actions"><button id="export-select" type="button">Select current page text</button><button id="export-download" type="button">Prepare host download</button></div>
-    <textarea id="export-text" rows="12" readonly spellcheck="false" aria-label="Export text — current page" aria-describedby="export-page-status"></textarea>
+    <h2>Per-edge contributions</h2>
+    <div id="results"></div>
   </details>
-  <h2>Per-edge contributions</h2>
-  <div id="results"></div>
 </body>
 </html>

@@ -4,11 +4,12 @@
   const catalog = window.CLAWMorphCatalog, core = window.CLAWLink, input = window.CLAWInput, sdk = window.MorphbenchAddon;
   let controller = null, supported = false, busy = false, inputRevision = 0, presets = [], modelRoot;
   let provenance = Object.create(null), inputLabel = "Manual preview coefficients";
-  let matrix = null, matrixEdited = false, matrixPending = true, reference = null, geometry = null, geometrySupported = false;
+  let matrix = null, matrixEdited = false, matrixPending = true, matrixInvalid = false, reference = null, geometry = null, geometrySupported = false;
   const exportPageBytes = 32 * 1024;
   let exportSnapshot = null, exportPage = 0;
   let downloadSupported = false;
   const sliderRows = []; let sliderPairKey = null;
+  const matrixControls = [];
   const traitRows = []; let traitNamesKey = null;
   function status(message, error = false) { el("status").textContent = message; el("status").className = error ? "error" : ""; }
   function showError(error) { if (error.code !== "superseded") status((error.code ? error.code + ": " : "") + error.message, true); }
@@ -26,23 +27,21 @@
   }
   function buttons() {
     const pair = controller && controller.pair, selected = selectedPair();
-    for (const id of ["apply", "matrix-apply", "reset", "live"]) el(id).disabled = !selected || busy;
     el("open-pair").disabled = !supported || busy || !el("human-model").value || !el("wolf-model").value;
     el("close-pair").disabled = !supported || busy || (!pair && !controller.failedCleanup.length);
     el("refresh-models").disabled = !supported || busy;
     for (const id of ["profile", "human-model", "wolf-model", "import", "human", "preset", "weight", "actor-weight", "human-traits", "sidebar-role"]) el(id).disabled = busy;
-    for (const row of sliderRows) { row.range.disabled = busy; row.number.disabled = busy; }
+    for (const row of sliderRows) { row.range.disabled = busy || !selected; row.number.disabled = busy || !selected; }
     for (const row of traitRows) { row.available.disabled = busy; row.number.disabled = busy || !row.available.checked; }
-    for (const id of ["matrix-import", "matrix-reset", "matrix-add", "matrix-constant"]) el(id).disabled = busy;
+    for (const id of ["matrix-import", "matrix-paste", "matrix-paste-load", "matrix-reset", "matrix-add", "matrix-constant", "matrix-import-toggle"]) el(id).disabled = busy;
+    for (const { node, locked } of matrixControls) node.disabled = busy || locked;
     el("geometry-read").disabled = !selected || busy || !geometrySupported;
     el("geometry-export").disabled = !geometry;
     el("export-download").disabled = !downloadSupported || !exportSnapshot;
-    el("matrix-apply-status").textContent = !selected ? "Open the selected pair before applying this matrix." :
-      matrixPending ? "Matrix draft is not applied. Apply matrix to previews updates both models with the current human inputs." :
-      "The current matrix has been applied to this pair.";
-    el("live-status").textContent = !selected ? "Open the selected pair to activate human sliders." :
-      el("live").checked ? "Live: human sliders and preset imports update both validated models." :
-      "Paused: values are calculated only. Press Apply current values or turn live updates on.";
+    el("matrix-apply-status").textContent = !selected ? "Open a matching pair in Model settings to preview changes." :
+      matrixPending ? "Preview update pending; the last acknowledged result remains visible." :
+      "Both previews are up to date. Valid edits update automatically.";
+    el("workspace-summary").textContent = selected ? matrix.family + " · " + matrix.sex + " · two models connected" : "Choose a human family and two model files";
   }
   function cell(row, value, tag) { const node = document.createElement(tag || "td"); node.textContent = value; row.appendChild(node); }
   function calculate() {
@@ -117,28 +116,29 @@
       row.origin.textContent = row.available.checked ? "Explicit preview value; verify imported provenance" : "Unavailable; checkbox declares a preview value";
     }
   }
-  function refreshSliderValues() {
+  function refreshSliderValues(preserve = null) {
     let vector; try { vector = values(); } catch (_) { return; }
     for (const row of sliderRows) { const value = Object.hasOwn(vector, row.name) ? vector[row.name] : 0;
       row.range.min = String(Math.min(-1, value)); row.range.max = String(Math.max(2, value));
-      row.range.value = String(value); row.number.value = format(value);
-      row.origin.textContent = provenance[row.name] || (Object.hasOwn(vector, row.name) ?
+      row.range.value = String(value); if (row.number !== preserve) row.number.value = format(value);
+      row.range.title = row.number.title = provenance[row.name] || (Object.hasOwn(vector, row.name) ?
         "Provided preview coefficient; runtime value unmeasured" : "Unspecified preview zero; runtime value unmeasured"); }
   }
   function filterSliders() { const term = el("filter").value.toLowerCase(); for (const row of sliderRows) row.node.hidden = !row.name.toLowerCase().includes(term); }
   async function applyPair() {
-    if (busy) { status("Wait for the current preview operation, then Apply current values.", true); return; }
+    if (busy) return;
     if (!selectedPair()) { status("Open the selected human and wolf pair before applying values.", true); return; }
-    const revision = ++inputRevision;
+    const revision = ++inputRevision; matrixPending = true; buttons();
     try { calculate(); const result = await controller.apply(values(), matrix, actorWeight(), humanTraits());
-      if (revision === inputRevision) { matrixPending = false; status("Applied " + Object.keys(result.humanValues).length + " human inputs and " +
-        Object.keys(result.wolfValues).length + " derived wolf targets. The host links rotation from either panel."); }
-    } catch (error) { showError(error); } buttons();
+      if (revision === inputRevision) { matrixPending = false; status("Updated both models · " + Object.keys(result.humanValues).length + " human controls → " +
+        Object.keys(result.wolfValues).length + " wolf outputs."); }
+    } catch (error) { if (revision === inputRevision) showError(error); } buttons();
   }
-  function edited(name) {
+  function edited(name, preserve = null) {
+    if (busy) return;
     if (name) provenance[name] = "Manually edited preview coefficient; not a game observation";
     inputLabel = "Edited human preview vector"; ++inputRevision;
-    try { calculate(); refreshSliderValues(); if (el("live").checked && selectedPair()) return applyPair(); } catch (error) { showError(error); }
+    try { calculate(); refreshSliderValues(preserve); if (selectedPair()) return applyPair(); } catch (error) { showError(error); }
   }
   function buildSliders() {
     el("shared-sliders").replaceChildren(); sliderRows.length = 0;
@@ -155,10 +155,13 @@
       const origin = document.createElement("small");
       const change = control => { try { if (!String(control.value).trim()) throw new Error("Enter a finite human morph value.");
         const vector = values(); vector[name] = Number(control.value); core.validateHuman(vector);
-        el("human").value = JSON.stringify(vector, null, 2); return edited(name);
+        if (busy) return;
+        el("human").value = JSON.stringify(vector, null, 2); return edited(name, control);
       } catch (error) { showError(error); } };
-      range.addEventListener("input", () => change(range)); number.addEventListener("change", () => change(number));
-      row.appendChild(range); row.appendChild(number); row.appendChild(origin); el("shared-sliders").appendChild(row);
+      range.setAttribute("aria-label", name + " slider"); number.setAttribute("aria-label", name + " value");
+      range.addEventListener("input", () => change(range)); number.addEventListener("input", () => change(number));
+      number.addEventListener("change", () => change(number));
+      row.appendChild(range); row.appendChild(number); el("shared-sliders").appendChild(row);
       sliderRows.push({ name, node: row, range, number, origin });
     }
     refreshSliderValues(); filterSliders();
@@ -175,7 +178,6 @@
       zoom && zoom.error ? "Zoom link paused: " + zoom.error.message + " Reopen the pair to retry; rotation still follows." :
       "Rotation follows both models. Zoom link unavailable: this host lacks scoped view get/set support.";
     if (event && event.error) showError(event.error);
-    if (!pair) el("live").checked = false;
     if (event && geometry && !event.method.startsWith("zoom.")) { geometry = null; el("geometry-rows").replaceChildren();
       el("geometry-status").textContent = "Vertex snapshot invalidated by a preview change. Read again for current vertices.";
       el("geometry-shape").disabled = true; el("geometry-page").disabled = true; }
@@ -200,14 +202,14 @@
   }
   async function reconcileSelectedPair(rootChanged = false) {
     if (!controller || !controller.pair || !rootChanged && selectedPair()) return;
-    ++inputRevision; el("live").checked = false; matrixPending = true;
+    ++inputRevision; matrixPending = true;
     // close() revokes authority immediately, then serializes disposal behind
     // any already sent write. An unsent wolf write cannot outlive selection.
     const closing = controller.close(); pairChanged(); await closing;
   }
   async function sidebarSelected(selection) {
-    // A sidebar offer names a resource, not a body family or permission to apply
-    // retained inputs. The controller stages only that side before retiring it.
+    // The explicitly declared family stays authoritative. The controller stages
+    // and validates this side before replacing it or applying retained inputs.
     if (!selection || selection.root !== modelRoot || typeof selection.name !== "string") return;
     const role = el("sidebar-role").value;
     if (!["human", "wolf"].includes(role)) return;
@@ -220,32 +222,37 @@
     if (pair && pair[role].name === selection.name) {
       status("This model is already open on the " + role + " side. The comparison is unchanged."); return;
     }
-    ++inputRevision; el("live").checked = false; matrixPending = true;
+    ++inputRevision; matrixPending = true;
     if (!pair) {
       select.value = selection.name; buttons();
       status("Selected " + role + " resource. Review the human family and both models, then Open comparison pair."); return;
     }
+    let replaced = false;
     busy = true; buttons(); status("Replacing the " + role + " model; keeping the other preview and matrix\u2026");
     try {
-      await controller.replace(role, selection.name, matrix);
+      await controller.replace(role, selection.name, matrix, { humanValues: values(), actorWeight: actorWeight(), humanTraits: humanTraits() });
+      replaced = true;
       select.value = selection.name;
       const cleanup = controller.failedCleanup.length > 0;
-      status("Replaced the " + role + " model. The other preview, matrix and inputs are retained. Live updates are paused: review the human family and Apply current values." +
+      status("Replaced the " + role + " model. The other preview, matrix and inputs are retained." +
         (cleanup ? " Cleanup of the old preview is incomplete; Close comparison pair retries it." : ""), cleanup);
     } catch (error) { showError(error); }
     finally { busy = false; pairChanged(); }
+    if (replaced && selectedPair()) return applyPair();
   }
-  async function profileChanged() {
-    el("live").checked = false; busy = true; buttons();
+  async function profileChanged({ apply = true } = {}) {
+    let changed = false;
+    busy = true; buttons();
     try { if (controller && controller.pair) await controller.changeProfile(el("profile").value);
-      resetMatrix(); reference = null; calculate(); status("Family changed. Owned wolf outputs were cleared; review resources before applying.");
+      resetMatrix(); reference = null; calculate(); status("Family changed. Review the declared family in Model settings.");
+      changed = true;
       return true;
     } catch (error) {
       if (error.code === "reopenRequired") { try { await controller.close(); resetMatrix(); reference = null; calculate(); status("Resource sex changed. Select matching human and wolf resources and reopen the pair."); return true; }
         catch (cleanupError) { showError(cleanupError); } }
       else { if (controller && controller.pair) el("profile").value = controller.pair.profileId; showError(error); }
       return false;
-    } finally { busy = false; pairChanged(); }
+    } finally { busy = false; pairChanged(); if (apply && changed && selectedPair()) await applyPair(); }
   }
   function resetMatrix() {
     matrix = checkedMatrix(core.getProfile(catalog, el("profile").value)); matrixEdited = false; matrixPending = true;
@@ -255,15 +262,42 @@
   }
   function checkedMatrix(candidate) {
     const normalized = core.validateMatrix(candidate), pair = controller && controller.pair;
-    if (pair) core.validateModel(pair.wolf.scene, { names: pair.wolf.names }, core.matrixTargets(normalized));
+    if (pair) {
+      core.validateModel(pair.wolf.scene, { names: pair.wolf.names }, core.matrixTargets(normalized));
+      // Canonical profiles deliberately tolerate unavailable capture sources.
+      // New custom source names must belong to this human model; typo edits
+      // must not silently replace a working rule with an always-zero input.
+      const known = new Set([...(matrix ? matrix.rules.map(rule => rule.source) : []),
+        ...core.getProfile(catalog, el("profile").value).rules.map(rule => rule.source), ...pair.human.names].map(core.providerIdentity));
+      for (const rule of normalized.rules) if (rule.function !== "constant" && core.sourceKind(rule.source) === 0 && !known.has(core.providerIdentity(rule.source))) {
+        throw new Error("Human model has no morph named " + rule.source + ". The working matrix is unchanged.");
+      }
+    }
     return normalized;
   }
-  function matrixChange(change) {
+  function matrixChange(change, { rebuild = true, control = null } = {}) {
+    if (busy) return;
     try {
       const candidate = JSON.parse(JSON.stringify(matrix)); change(candidate);
-      matrix = checkedMatrix(candidate); matrixEdited = true; matrixPending = true; ++inputRevision; el("live").checked = false;
-      calculate(); buildMatrix(); status("Wolf matrix updated locally. Apply to update both previews.");
-    } catch (error) { buildMatrix(); showError(error); } finally { buttons(); }
+      checkedMatrix(candidate);
+      const recovering = matrixInvalid; matrixInvalid = false;
+      if (control) control.setAttribute("aria-invalid", "false");
+      if (JSON.stringify(candidate) === JSON.stringify(matrix)) {
+        if (recovering && selectedPair()) return applyPair();
+        return;
+      }
+      // Keep zero-gain rows editable while typing 0.5. The shared evaluator and
+      // exporters still normalize/prune them according to the existing contract.
+      matrix = candidate; matrixEdited = true; matrixPending = true; ++inputRevision;
+      calculate();
+      if (rebuild) buildMatrix();
+      else Array.from(el("matrix-rows").children).forEach((row, index) => {
+        const cap = row.children[5].children[0];
+        if (cap !== control) cap.value = String(matrix.rules[index].cap);
+      });
+      if (selectedPair()) return applyPair();
+      status("Matrix ready. Open a matching pair to preview it.");
+    } catch (error) { ++inputRevision; matrixInvalid = true; if (control) control.setAttribute("aria-invalid", "true"); showError(error); } finally { buttons(); }
   }
   function filterMatrix() {
     const term = el("matrix-filter").value.toLowerCase();
@@ -272,9 +306,10 @@
     });
   }
   function buildMatrix() {
-    el("matrix-rows").replaceChildren(); if (!matrix) return;
+    el("matrix-rows").replaceChildren(); matrixControls.length = 0; if (!matrix) return;
     const targets = availableTargets(matrix);
-    const addControl = (row, node) => { const td = document.createElement("td"); td.appendChild(node); row.appendChild(td); return node; };
+    const addControl = (row, node) => { const td = document.createElement("td"); td.appendChild(node); row.appendChild(td);
+      if (["input", "select"].includes(node.tagName.toLowerCase())) matrixControls.push({ node, locked: Boolean(node.disabled) }); return node; };
     matrix.rules.forEach((rule, index) => {
       const row = document.createElement("tr"); cell(row, String(index + 1));
       const source = document.createElement("input"); source.type = "text"; source.value = rule.source;
@@ -300,21 +335,23 @@
         const control = document.createElement("input"); control.type = "number"; control.step = "any"; control.value = String(rule[field]);
         control.setAttribute("aria-label", field + " edge " + (index + 1));
         if (field === "cap") { control.min = "0"; control.max = "1"; }
-        control.addEventListener("change", () => matrixChange(candidate => {
+        const change = () => matrixChange(candidate => {
           if (!control.value.trim()) throw new Error("Enter a finite " + field + ".");
           if (field === "cap") candidate.rules.filter(edge => edge.target === rule.target).forEach(edge => { edge.cap = Number(control.value); });
           else candidate.rules[index][field] = Number(control.value);
-        })); addControl(row, control);
+        }, { rebuild: false, control });
+        control.addEventListener("input", change); control.addEventListener("change", change); addControl(row, control);
       }
       const parameter = document.createElement("input"); parameter.type = "number";
       parameter.setAttribute("aria-label", "Function parameter edge " + (index + 1));
       parameter.disabled = !["power", "constant"].includes(rule.function); parameter.step = rule.function === "power" ? "1" : "any";
       parameter.value = rule.function === "power" ? String(rule.exponent) : rule.function === "constant" ? String(rule.value) : "";
       if (rule.function === "power") { parameter.min = "1"; parameter.max = "8"; }
-      parameter.addEventListener("change", () => matrixChange(candidate => {
+      const changeParameter = () => matrixChange(candidate => {
         if (!parameter.value.trim()) throw new Error("Enter a finite function parameter.");
         candidate.rules[index][rule.function === "power" ? "exponent" : "value"] = Number(parameter.value);
-      })); addControl(row, parameter);
+      }, { rebuild: false, control: parameter });
+      parameter.addEventListener("input", changeParameter); parameter.addEventListener("change", changeParameter); addControl(row, parameter);
       const actions = document.createElement("div"); actions.className = "order-controls";
       for (const [label, offset] of [["\u2191", -1], ["\u2193", 1], ["\u00d7", 0]]) {
         const button = document.createElement("button"); button.type = "button"; button.textContent = label;
@@ -323,13 +360,13 @@
         button.addEventListener("click", () => matrixChange(candidate => {
           if (!offset) candidate.rules.splice(index, 1);
           else [candidate.rules[index], candidate.rules[index + offset]] = [candidate.rules[index + offset], candidate.rules[index]];
-        })); actions.appendChild(button);
+        })); matrixControls.push({ node: button, locked: button.disabled }); actions.appendChild(button);
       }
       addControl(row, actions);
       const labels = ["Edge", "Human source", "Wolf target", "Function", "Gain", "Target cap", "Exponent / constant", "Order / remove"];
       Array.from(row.children).forEach((td, column) => td.setAttribute("data-label", labels[column]));
       el("matrix-rows").appendChild(row);
-    }); filterMatrix();
+    }); filterMatrix(); buttons();
   }
   function availableTargets(current) {
     const pair = controller && controller.pair;
@@ -390,20 +427,34 @@
   async function exportChecked(run) { try { return await run(); } catch (error) { showError(error); } finally { buttons(); } }
   el("matrix-filter").addEventListener("input", filterMatrix);
   el("matrix-add").addEventListener("click", () => addEdge(false)); el("matrix-constant").addEventListener("click", () => addEdge(true));
-  el("matrix-reset").addEventListener("click", () => exportChecked(() => { resetMatrix(); ++inputRevision; el("live").checked = false; calculate(); status("Restored the canonical wolf matrix locally. Apply to update the previews."); }));
-  el("matrix-export").addEventListener("click", () => exportChecked(() => showExport(matrix.id + ".wolf-matrix.json", input.matrixJSON(matrix))));
+  el("matrix-reset").addEventListener("click", () => exportChecked(() => {
+    if (busy) return; resetMatrix(); ++inputRevision; calculate(); return selectedPair() ? applyPair() : undefined;
+  }));
+  el("matrix-export").addEventListener("click", () => exportChecked(async () => {
+    showExport(matrix.id + ".wolf-matrix.json", input.matrixJSON(matrix));
+    if (downloadSupported) {
+      el("export-panel").open = false;
+      await downloadExport();
+    }
+  }));
   el("matrix-xml").addEventListener("click", () => exportChecked(() => showExport("MorphLinks.xml", core.exportCatalog(catalog, matrix, el("game-female-family").value, el("game-male-family").value), "application/xml")));
   el("matrix-import").addEventListener("change", async () => {
-    const file = el("matrix-import").files[0]; if (!file) return; const revision = ++inputRevision; el("live").checked = false;
+    const file = el("matrix-import").files[0]; if (!file || busy) return; const revision = ++inputRevision;
     try { const text = await file.text(); if (revision !== inputRevision) return;
       matrix = checkedMatrix(input.parseMatrix(text, core.getProfile(catalog, el("profile").value))); matrixEdited = true; matrixPending = true;
-      calculate(); buildMatrix(); status("Imported the complete wolf coefficient/function matrix. Apply to update both previews.");
+      calculate(); buildMatrix(); status("Imported the complete matrix.");
+      if (selectedPair()) await applyPair();
     } catch (error) { showError(error); } finally { el("matrix-import").value = ""; buttons(); }
   });
+  el("matrix-import-toggle").addEventListener("click", () => {
+    el("matrix-import-panel").open = !el("matrix-import-panel").open;
+    if (el("matrix-import-panel").open) el("matrix-paste").focus();
+  });
   el("matrix-paste-load").addEventListener("click", () => exportChecked(() => {
-    ++inputRevision; el("live").checked = false;
+    if (busy) return; ++inputRevision;
     matrix = checkedMatrix(input.parseMatrix(el("matrix-paste").value, core.getProfile(catalog, el("profile").value))); matrixEdited = true; matrixPending = true;
-    calculate(); buildMatrix(); status("Loaded the pasted wolf coefficient/function matrix. Apply to update both previews.");
+    calculate(); buildMatrix(); status("Imported the complete matrix.");
+    if (selectedPair()) return applyPair();
   }));
   el("snapshot-import").addEventListener("change", async () => {
     const file = el("snapshot-import").files[0]; if (!file) return; const revision = ++inputRevision;
@@ -428,13 +479,14 @@
     }
     renderExportPage(page - 1);
   }));
-  el("export-download").addEventListener("click", () => exportChecked(async () => {
+  async function downloadExport() {
     const snapshot = exportSnapshot;
     if (!snapshot) throw new Error("Prepare an export first.");
     const result = await sdk.request("exports.prepare", {filename:snapshot.name, format:snapshot.type === "application/xml" ? "xml" : "json", text:snapshot.text});
     if (!result || result.prepared !== true) throw new Error("The host did not acknowledge the prepared export.");
     status("Prepared " + result.filename + " in the Morphbench host. Click the host's Download button to save the exact snapshot.");
-  }));
+  }
+  el("export-download").addEventListener("click", () => exportChecked(downloadExport));
   function geometryShapes() { return geometry ? ["human", "wolf"].flatMap(role => geometry.models[role].shapes.map(shape => ({ role, shape }))) : []; }
   function renderGeometry() {
     const entry = geometryShapes()[Number(el("geometry-shape").value)]; el("geometry-rows").replaceChildren(); if (!entry) return;
@@ -462,7 +514,6 @@
     } catch (error) { showError(error); } finally { busy = false; buttons(); }
   });
   el("geometry-export").addEventListener("click", () => exportChecked(() => { if (geometry) showExport(matrix.id + ".paired-vertices.json", JSON.stringify(geometry)); }));
-  el("evaluate").addEventListener("click", () => { try { calculate(); status("Calculated. No preview changed."); } catch (error) { showError(error); } });
   el("profile").addEventListener("change", () => { ++inputRevision; return profileChanged(); });
   el("human").addEventListener("input", () => { provenance = Object.create(null); return edited(); });
   el("human-traits").addEventListener("input", () => edited());
@@ -472,7 +523,7 @@
   });
   el("filter").addEventListener("input", filterSliders);
   for (const id of ["human-model", "wolf-model"]) el(id).addEventListener("change", async () => {
-    ++inputRevision; el("live").checked = false; matrixPending = true; busy = true; buttons();
+    ++inputRevision; matrixPending = true; busy = true; buttons();
     try { await reconcileSelectedPair(); status("Resource selection changed. Click Open comparison pair to activate these files before editing morphs."); }
     catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });
@@ -483,27 +534,19 @@
     catch (error) { showError(error); } finally { busy = false; pairChanged(); }
   });
   el("open-pair").addEventListener("click", async () => {
-    busy = true; buttons(); el("live").checked = false;
+    let opened = false;
+    busy = true; buttons();
     status("Opening the selected human and wolf resources\u2026");
     try { await controller.open(el("profile").value, el("human-model").value, el("wolf-model").value, matrix);
-      matrixPending = true; el("live").checked = true;
-      status("Pair ready. Human sliders now update both models. Import a human preset or Apply current values to start; edit the conversion matrix below.");
+      opened = true;
+      matrixPending = true; el("resources").open = false;
+      status("Pair ready. Move a human slider or edit the matrix to update both models.");
     } catch (error) { showError(error); } finally { busy = false; pairChanged(); }
+    if (opened && selectedPair()) await applyPair();
   });
   el("close-pair").addEventListener("click", async () => {
     busy = true; buttons(); status("Closing this plugin's comparison previews\u2026"); try { await controller.close(); status("Closed this plugin's comparison previews."); }
     catch (error) { showError(error); } finally { busy = false; pairChanged(); }
-  });
-  el("apply").addEventListener("click", applyPair);
-  el("matrix-apply").addEventListener("click", applyPair);
-  el("reset").addEventListener("click", async () => { ++inputRevision; el("live").checked = false; matrixPending = true;
-    try { await controller.zeroWolf(); status("Zeroed only acknowledged wolf outputs. Human controls are retained."); }
-    catch (error) { showError(error); } buttons(); });
-  el("live").addEventListener("change", () => { buttons(); if (el("live").checked) return applyPair(); });
-  el("show-matrix").addEventListener("click", () => {
-    const panel = el("matrix-panel");
-    if (typeof panel.scrollIntoView === "function") panel.scrollIntoView({ behavior: "smooth", block: "start" });
-    el("matrix-filter").focus();
   });
   function loadPreset() {
     const preset = presets[Number(el("preset").value)]; if (!preset) return;
@@ -512,8 +555,8 @@
     provenance = Object.fromEntries(Object.keys(vector).map(name => [name, "Preset endpoint interpolation; not runtime-observed"]));
     inputLabel = "Preset " + preset.name + " at coefficient weight " + el("weight").value + "; selected NIF geometry stays fixed";
     el("human").value = JSON.stringify(vector, null, 2); calculate(); buildSliders();
-    status("Loaded human preset coefficients. Press Apply current values when live updates are paused.");
-    if (el("live").checked && selectedPair()) return applyPair();
+    status("Loaded human preset coefficients.");
+    if (selectedPair()) return applyPair();
   }
   for (const id of ["preset", "weight"]) el(id).addEventListener("change", () => {
     try { return loadPreset(); } catch (error) { showError(error); } });
@@ -529,7 +572,7 @@
       } else {
         const parsed = input.parseJSON(text);
         if (parsed.profileId) { core.getProfile(catalog, parsed.profileId); if (parsed.profileId !== el("profile").value) {
-          el("profile").value = parsed.profileId; if (!await profileChanged()) return; } }
+          el("profile").value = parsed.profileId; if (!await profileChanged({ apply: false })) return; } }
         if (importRevision !== inputRevision) return;
         el("human-traits").value = JSON.stringify(parsed.humanTraits || {}, null, 2);
         provenance = parsed.provenance; inputLabel = parsed.label; el("human").value = JSON.stringify(parsed.values, null, 2);
@@ -538,8 +581,8 @@
           el("actor-weight-provenance").textContent = "Imported explicit normalized actor weight. Import is not proof of a measured game value; fixed NIF geometry remains unchanged.";
         }
         presets = []; el("preset-controls").hidden = true; calculate(); buildSliders();
-        status("Imported human values. Open a matching pair or press Apply current values when live updates are paused.");
-        if (el("live").checked && selectedPair()) await applyPair();
+        status("Imported human values.");
+        if (selectedPair()) await applyPair();
       }
     } catch (error) { showError(error); } finally { el("import").value = ""; }
   });

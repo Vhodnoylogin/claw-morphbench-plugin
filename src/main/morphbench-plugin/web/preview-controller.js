@@ -264,8 +264,8 @@
         }
       });
     }
-    replace(role, name, matrix = null) {
-      let pair, profile, selectedMatrix;
+    replace(role, name, matrix = null, inputs = null) {
+      let pair, profile, selectedMatrix, retained = null;
       try {
         if (this._replacement) throw failure("replacementPending", "Wait for the current model replacement.");
         pair = this._pair;
@@ -273,6 +273,11 @@
         if (!["human", "wolf"].includes(role) || typeof name !== "string" || !name) throw failure("invalidModel", "Select a role and an exact catalogue name.");
         profile = core.getProfile(this.catalog, pair.profileId);
         selectedMatrix = matrix ? frozen(copy(core.validateMatrix(matrix))) : null;
+        if (inputs !== null) retained = frozen({
+          humanValues: core.validateHuman(inputs.humanValues),
+          actorWeight: core.validateActorWeight(inputs.actorWeight),
+          humanTraits: core.validateTraits(inputs.humanTraits),
+        });
         if (selectedMatrix && ["id", "sex", "family", "version"].some(key => selectedMatrix[key] !== profile[key]))
           throw failure("invalidMatrix", "Matrix belongs to a different selected human family.");
         if (pair[role].name === name) return Promise.resolve(this.pair);
@@ -317,6 +322,9 @@
           const snapshots = { human: { binding: bindings.human, names: result.human.names }, wolf: { binding: bindings.wolf, names: result.wolf.names } };
           const candidate = new PairState(this.catalog);
           candidate.bind(pair.profileId, bindings); candidate.arm(snapshots, selectedMatrix);
+          // Immediate UI updates require the complete retained vector to fit
+          // before committing the new handle and retiring the working model.
+          if (retained) candidate.plan(retained.humanValues, selectedMatrix, retained.actorWeight, retained.humanTraits);
           const handles = [pair[other].preview, item.preview];
           linkAttempted = true;
           const linked = await this._request("previews.link", { previews: handles, properties: ["orientation"] }, epoch, pair);

@@ -23,7 +23,7 @@ class Element {
 function harness({ stable = false, missing = null, failWolfSet = false, geometry = false,
   geometryVertexCount = 3, geometryShapeName = "Body", hostExports = false, zoom = false, wolfNamesOverride = null, humanNamesOverride = null,
   modelNames = ["human.nif", "wolf.nif"], modelRoot = { value: "isolated" }, beforeRequest = null,
-  sidebarSelection = false, humanModelNames = ["human.nif", "human-next.nif"] } = {}) {
+  sidebarSelection = false, humanModelNames = ["human.nif", "human-next.nif"], namesByModel = {} } = {}) {
   const nodes = new Map(), events = new Map(), calls = [], previews = new Map(); let serial = 0;
   const selectIds = new Set(["profile", "human-model", "wolf-model", "preset", "geometry-shape", "game-female-family", "game-male-family", "sidebar-role"]);
   const element = id => { if (!nodes.has(id)) nodes.set(id, new Element(selectIds.has(id) ? "select" : "div")); return nodes.get(id); };
@@ -57,7 +57,7 @@ function harness({ stable = false, missing = null, failWolfSet = false, geometry
         else if (method === "models.selection.subscribe") { assert.equal(sidebarSelection, true); result = { enabled: params.enabled }; }
         else if (method === "models.list") result = { root: modelRoot.value, entries: modelNames.map(name => ({ name, nif: name, tri: name + ".tri" })) };
         else if (method === "previews.create") { const preview = "opaque:" + (++serial), human = humanModelNames.includes(params.name);
-          previews.set(preview, { name: params.name, zoom: human ? 1 : 1.25, revision: 0, names: human ? humanNames : wolfNames, values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
+          previews.set(preview, { name: params.name, zoom: human ? 1 : 1.25, revision: 0, names: namesByModel[params.name] || (human ? humanNames : wolfNames), values: human ? {} : Object.fromEntries(Object.entries({ CLAWHeadEarSize: .6, CLAWTailLength: .8, "Unowned.WolfControl": .4 }).filter(([name])=>wolfNames.includes(name))) }); result = { preview, name: params.name }; }
         else if (method === "previews.link") { assert.equal(params.previews.length, 2); assert.equal(new Set(params.previews).size, 2);
           assert.ok(params.previews.every(id => previews.has(id))); assert.deepEqual(JSON.parse(JSON.stringify(params.properties)), ["orientation"]); result = params; }
         else {
@@ -118,12 +118,12 @@ test("optional sidebar selection chooses an explicit role without main-scene wri
   assert.ok(!bench.calls.some(call=>["models.open","morphs.set","morphs.reset"].includes(call.method)));
 });
 
-test("sidebar human replacement keeps the exact wolf preview, inputs and edited matrix while pausing live", async () => {
+test("sidebar human replacement keeps the exact wolf preview, inputs and edited matrix and automatically updates the replacement", async () => {
   const bench=harness({sidebarSelection:true,zoom:true,modelNames:["human.nif","human-next.nif","wolf.nif"],humanNamesOverride:["Belly","HumanOther"]}); await open(bench);
   const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.25,cap:1}]};
   bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});
   await bench.element("matrix-paste-load").fire("click");
-  bench.element("human").value=JSON.stringify({Belly:.8,HumanOther:.3}); await bench.element("apply").fire("click");
+  bench.element("human").value=JSON.stringify({Belly:.8,HumanOther:.3}); await bench.element("human").fire("input");
   await bench.element("matrix-export").fire("click"); const matrix=bench.element("export-text").value;
   const wolf=bench.previews.get("opaque:2"),wolfState=JSON.stringify(wolf),human=bench.element("human").value;
   const writes=bench.calls.filter(call=>call.method==="previews.morphs.set").length;
@@ -132,17 +132,18 @@ test("sidebar human replacement keeps the exact wolf preview, inputs and edited 
   assert.equal(bench.calls.filter(call=>call.method==="previews.create").at(-1).params.before,"opaque:1");
   assert.equal(bench.previews.get("opaque:2"),wolf);assert.equal(JSON.stringify(wolf),wolfState);
   assert.equal(bench.element("human-model").value,"human-next.nif");assert.equal(bench.element("wolf-model").value,"wolf.nif");
-  assert.equal(bench.element("human").value,human);assert.equal(bench.element("live").checked,false);
-  assert.match(bench.element("pair-status").textContent,/human-next.nif/);assert.equal(bench.element("apply").disabled,false);
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,writes);
+  assert.equal(bench.element("human").value,human);
+  assert.match(bench.element("pair-status").textContent,/human-next.nif/);assert.equal(bench.previews.size,2);
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,writes+2);
+  assert.equal(bench.previews.get("opaque:3").values.Belly,Math.fround(.8));
   await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,matrix);
-  await bench.element("apply").fire("click");assert.equal(bench.previews.get("opaque:3").values.Belly,Math.fround(.8));
+  await bench.element("human").fire("input");assert.equal(bench.previews.get("opaque:3").values.Belly,Math.fround(.8));
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.2));
 });
 
 test("sidebar wolf replacement preserves the human preview and ignores wrong-root, unknown and repeated picks", async () => {
   const bench=harness({sidebarSelection:true,modelNames:["human.nif","wolf.nif","wolf-next.nif"]}); await open(bench);
-  bench.element("human").value=JSON.stringify({Belly:.6});await bench.element("apply").fire("click");
+  bench.element("human").value=JSON.stringify({Belly:.6});await bench.element("human").fire("input");
   const human=bench.previews.get("opaque:1"),values=JSON.stringify(human.values),before=bench.calls.length;
   for(const data of [{root:"other",name:"wolf-next.nif"},{root:"isolated",name:"missing.nif"},{root:"isolated",name:"human.nif"}]) {
     bench.selection(data);await settle();
@@ -152,7 +153,7 @@ test("sidebar wolf replacement preserves the human preview and ignores wrong-roo
   assert.equal(bench.previews.size,2);assert.ok(!bench.previews.has("opaque:2"));
   assert.equal(bench.previews.get("opaque:1"),human);assert.equal(JSON.stringify(human.values),values);
   assert.equal(bench.element("human-model").value,"human.nif");assert.equal(bench.element("wolf-model").value,"wolf-next.nif");
-  assert.equal(bench.element("live").checked,false);assert.equal(bench.element("apply").disabled,false);
+  assert.equal(bench.previews.size,2);
 });
 
 test("sidebar replacement failure keeps the validated old pair and does not discard edits",async()=>{
@@ -162,7 +163,7 @@ test("sidebar replacement failure keeps the validated old pair and does not disc
   const old=[...bench.previews.keys()];await bench.element("matrix-export").fire("click");const matrix=bench.element("export-text").value;
   bench.selection({root:"isolated",name:"human-next.nif"});await settle();
   assert.deepEqual([...bench.previews.keys()],old);assert.equal(bench.element("human-model").value,"human.nif");
-  assert.equal(bench.element("human").value,'{"Belly":0.7}');assert.equal(bench.element("apply").disabled,false);
+  assert.equal(bench.element("human").value,'{"Belly":0.7}');assert.equal(bench.previews.size,2);
   assert.match(bench.element("status").textContent,/Unreadable replacement model/);
   await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,matrix);
 });
@@ -179,9 +180,9 @@ test("actual SDK selects the BHUNP matrix, applies raw body coefficients and exp
   const bench=harness({humanNamesOverride:names,wolfNamesOverride:core.matrixTargets(profile)});await settle();
   assert.match(bench.element("profile").children.find(option=>option.value===profile.id).textContent,/BHUNP 3\.34 Advanced Ver4/);
   bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
-  assert.equal(bench.element("apply").disabled,false);assert.equal(bench.element("shared-sliders").children.length,47);
+  assert.equal(bench.previews.size,2);assert.equal(bench.element("shared-sliders").children.length,47);
   const human={Arms:1,Biceps:.75,Triceps:.5,ChubbyArms:.2,"UNP Low":-.25,Breasts:.3};
-  bench.element("human").value=JSON.stringify(human);await bench.element("apply").fire("click");
+  bench.element("human").value=JSON.stringify(human);await bench.element("human").fire("input");
   const expected=core.evaluateMatrix(profile,human,.5).values;
   const actualHuman=bench.previews.get("opaque:1").values;assert.equal(Object.keys(actualHuman).length,47);
   for(const name of names)assert.equal(actualHuman[name],Math.fround(human[name]??0),name);
@@ -197,20 +198,20 @@ for (const sex of ["male", "female"]) for(const humanNames of [[],["$actor.weigh
   const profile=catalog.profiles.find(p=>p.family==="Vanilla"&&p.sex===sex);assert.ok(profile);
   const bench=harness({humanNamesOverride:humanNames,wolfNamesOverride:core.matrixTargets(profile).concat(["CLAWHeadEarSize","CLAWTailLength"])});await settle();
   bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
-  assert.equal(bench.element("apply").disabled,false);assert.equal(bench.element("shared-sliders").children.length,0);
+  assert.equal(bench.previews.size,2);assert.equal(bench.element("shared-sliders").children.length,0);
   assert.match(bench.element("pair-status").textContent,/Fixed selected NIFs/);
   const expected=core.evaluateMatrix(profile,{},.75).values;
   bench.element("actor-weight").value="0.75";await bench.element("actor-weight").fire("change");
   assert.match(bench.element("actor-weight-provenance").textContent,/Manually edited/);
-  assert.equal(bench.element("live").checked,true);
-  assert.match(bench.element("status").textContent,/Applied 0 human inputs/);
-  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set");assert.equal(writes.length,1);
+
+  assert.match(bench.element("status").textContent,/Updated both models.*0 human controls/);
+  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set").slice(1);assert.equal(writes.length,1);
   assert.equal(writes[0].params.preview,"opaque:2");
   for(const [name,value]of Object.entries(expected))assert.equal(writes[0].params.values[name],value);
   assert.ok(!Object.hasOwn(writes[0].params.values,"$actor.weight"));
   await bench.element("snapshot-export").fire("click");
   assert.equal(JSON.parse(bench.element("export-text").value).actorWeight,.75);
-  const count=bench.calls.length;bench.element("actor-weight").value="";await bench.element("apply").fire("click");
+  const count=bench.calls.length;bench.element("actor-weight").value="";await bench.element("human").fire("input");
   assert.match(bench.element("status").textContent,/explicit normalized actor weight/);assert.equal(bench.calls.length,count);
   await bench.element("close-pair").fire("click");
 });
@@ -223,7 +224,7 @@ test("actual SDK opens classic UNP without TRI, applies weight and exports an in
   assert.match(bench.element("human-control-status").textContent,/no body TRI controls.*actor weight/);
   assert.equal(bench.element("game-female-family").value,"UNP");
   bench.element("actor-weight").value="0.75";await bench.element("actor-weight").fire("change");
-  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set");assert.equal(writes.length,1);
+  const writes=bench.calls.filter(c=>c.method==="previews.morphs.set").slice(1);assert.equal(writes.length,1);
   assert.equal(writes[0].params.preview,"opaque:2");
   assert.deepEqual(JSON.parse(JSON.stringify(writes[0].params.values)),JSON.parse(JSON.stringify(core.evaluateMatrix(profile,{},.75).values)));
   assert.ok(!Object.hasOwn(writes[0].params.values,"$actor.weight"));
@@ -241,13 +242,13 @@ test("actual SDK keeps mixed actor weight separate and clears former generic out
   await load(profile);await open(bench);
   bench.element("human").value='{"Belly":0.5,"HumanOther":-0.25}';
   for(const weight of [.75,.25]){
-    bench.element("actor-weight").value=String(weight);await bench.element("actor-weight").fire("change");await bench.element("apply").fire("click");
+    bench.element("actor-weight").value=String(weight);await bench.element("actor-weight").fire("change");await bench.element("human").fire("input");
     const human=[...bench.previews.values()].find(p=>p.name==="human.nif"),wolf=[...bench.previews.values()].find(p=>p.name==="wolf.nif");
     assert.equal(human.values.Belly,.5);assert.equal(human.values.HumanOther,-.25);
     assert.equal(wolf.values["Custom.Human"],.5);assert.equal(wolf.values["Custom.Weight"],weight);
     assert.ok(!Object.hasOwn(human.values,"$actor.weight"));
   }
-  await load({...profile,rules:[profile.rules[0]]});await bench.element("apply").fire("click");
+  await load({...profile,rules:[profile.rules[0]]});await bench.element("human").fire("input");
   const wolf=[...bench.previews.values()].find(p=>p.name==="wolf.nif");assert.equal(wolf.values["Custom.Weight"],0);assert.equal(wolf.values.CLAWHeadEarSize,.6);
 });
 
@@ -256,10 +257,10 @@ test("pasted standalone matrix loads without a file picker and stays independent
   const profile={...catalog.profiles[0],rules:[{source:"",target:"CLAWTorsoBellyRound",gain:1,cap:1,function:"constant",value:.35}]};
   bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});
   await bench.element("matrix-paste-load").fire("click");
-  assert.match(bench.element("status").textContent,/Loaded the pasted wolf/);
+  assert.match(bench.element("status").textContent,/Updated both models/);
   for(const value of [-.5,.9]) {
     bench.element("human").value=JSON.stringify({Belly:value});
-    await bench.element("apply").fire("click");
+    await bench.element("human").fire("input");
     const wolf=[...bench.previews.values()].find(p=>p.name==="wolf.nif");
     assert.equal(wolf.values.CLAWTorsoBellyRound,Math.fround(.35));
   }
@@ -267,16 +268,15 @@ test("pasted standalone matrix loads without a file picker and stays independent
 
 test("stable v1 capability gap is explicit and sends no preview or legacy mutation", async () => {
   const bench = harness({ stable: true }); await settle();
-  assert.equal(bench.element("open-pair").disabled, true); assert.equal(bench.element("apply").disabled, true);
+  assert.equal(bench.element("open-pair").disabled, true); assert.equal(bench.previews.size, 0);
   assert.match(bench.element("paired-support").textContent, /lacks independent previews/);
-  bench.element("human").value = '{"Belly":0.7}'; await bench.element("evaluate").fire("click");
+  bench.element("human").value = '{"Belly":0.7}'; await bench.element("human").fire("input");
   assert.deepEqual(bench.calls.map(call => call.method), ["host.info"]);
 });
 test("actual SDK connects paired UI, preserves human-only values and derives wolf outputs without global writes", async () => {
-  const bench = harness(); await open(bench); assert.equal(bench.element("apply").disabled, false);
+  const bench = harness(); await open(bench); assert.equal(bench.previews.size, 2);
   bench.element("human").value = '{"Belly":0.7,"BigBelly":0.7,"Butt":-0.5,"BigButt":-0.25}';
-  await bench.element("evaluate").fire("click"); assert.equal(bench.calls.filter(call => call.method.endsWith(".set")).length, 0);
-  await bench.element("apply").fire("click");
+  await bench.element("human").fire("input");
   assert.equal(bench.previews.get("opaque:1").values.Butt, -.5); assert.equal(bench.previews.get("opaque:1").values.BigButt, -.25);
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound, 1);
   assert.equal(bench.previews.get("opaque:2").values.CLAWHeadEarSize, 0);
@@ -284,16 +284,13 @@ test("actual SDK connects paired UI, preserves human-only values and derives wol
   assert.match(bench.element("unmapped").textContent, /Butt=-0.5/);
   assert.deepEqual(bench.legacyValues, { LegacyMain: .33 });
   assert.ok(!bench.calls.some(call => ["models.open", "morphs.set", "morphs.reset", "view.set", "previews.view.set"].includes(call.method)));
-  bench.element("human").value = "invalid JSON is irrelevant to zeroing acknowledged wolf outputs";
-  await bench.element("reset").fire("click");
-  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound, 0);
-  assert.equal(bench.previews.get("opaque:1").values.Butt, -.5);
   await bench.element("close-pair").fire("click"); assert.equal(bench.previews.size, 0);
 });
+
 test("slider provenance refreshes explicit signed and zero JSON values without reopening the pair", async () => {
   const bench = harness(); await open(bench);
   const row = name => bench.element("shared-sliders").children.find(node => node.children[0].textContent === name);
-  const origin = name => row(name).children[3].textContent;
+  const origin = name => row(name).children[2].title;
   const provided = "Provided preview coefficient; runtime value unmeasured";
   const omitted = "Unspecified preview zero; runtime value unmeasured";
   const originalBellyRow = row("Belly");
@@ -323,33 +320,33 @@ test("missing wolf target refuses opening and disposes both created previews wit
 });
 test("partial pair write failure closes both previews and displays readable failure", async () => {
   const bench = harness({ failWolfSet: true }); await open(bench);
-  bench.element("human").value = '{"Belly":0.7}'; await bench.element("apply").fire("click");
-  assert.equal(bench.previews.size, 0); assert.equal(bench.element("apply").disabled, true);
+  bench.element("human").value = '{"Belly":0.7}'; await bench.element("human").fire("input");
+  assert.equal(bench.previews.size, 0); assert.equal(bench.previews.size, 0);
   assert.match(bench.element("status").textContent, /Wolf scoped write failed/);
 });
 test("changing declared resource sex closes the old pair before any new-family apply", async () => {
-  const bench = harness(); await open(bench);
+  const bench = harness(); await open(bench); const before=bench.calls.length;
   bench.element("human").value = '{"Belly":0.7}';
   bench.element("profile").value = catalog.profiles.find(item => item.family === "HIMBO").id;
   await bench.element("profile").fire("change");
-  assert.equal(bench.previews.size, 0); assert.equal(bench.element("apply").disabled, true);
+  assert.equal(bench.previews.size, 0); assert.equal(bench.previews.size, 0);
   assert.match(bench.element("status").textContent, /sex changed/);
   assert.match(bench.element("profile-info").textContent, /HIMBO/);
-  assert.equal(bench.calls.filter(call => call.method.endsWith(".set")).length, 0);
+  assert.equal(bench.calls.slice(before).filter(call => call.method.endsWith(".set")).length, 0);
 });
 test("real full-preset fixture import retains provenance and all nonzero human-only fields", { skip: !realRoot }, async () => {
   const bench = harness(); await open(bench);
   const fixture = fs.readFileSync(path.join(realRoot,"full-preset-fixtures/FThin.json"),"utf8");
   bench.element("import").files = [{ name: "FThin.json", text: async () => fixture }]; await bench.element("import").fire("change");
   assert.match(bench.element("input-provenance").textContent, /full-preset-reconstruction-with-observed-subset/);
-  await bench.element("apply").fire("click");
+  await bench.element("human").fire("input");
   const actual = bench.previews.get("opaque:1").values;
   assert.equal(actual.BigButt, -.25); assert.equal(actual.Butt, -.5);
   assert.equal(Object.keys(JSON.parse(bench.element("human").value)).length, 154);
   assert.match(bench.element("unmapped").textContent, /BigButt=-0.25/);
   assert.ok(bench.element("shared-sliders").children.length >= 154);
 });
-test("wolf preset import/export preserves matrix metadata/functions and Apply uses edited matrix", async () => {
+test("wolf preset import/export preserves matrix metadata/functions and automatic preview uses the edited matrix", async () => {
   const bench = harness(); await open(bench);
   const original = core.getProfile(catalog, bench.element("profile").value);
   const matrix = { ...original, rules: [
@@ -359,7 +356,7 @@ test("wolf preset import/export preserves matrix metadata/functions and Apply us
   bench.element("matrix-import").files = [{ text: async () => JSON.stringify({ schemaVersion: 1, kind: "claw-wolf-matrix", profile: matrix }) }];
   await bench.element("matrix-import").fire("change");
   assert.equal(bench.element("matrix-rows").children.length, 2);
-  bench.element("human").value = '{"Belly":0.5}'; await bench.element("apply").fire("click");
+  bench.element("human").value = '{"Belly":0.5}'; await bench.element("human").fire("input");
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound, core.evaluateMatrix(matrix, { Belly: .5 }).values.CLAWTorsoBellyRound);
   await bench.element("matrix-export").fire("click");
   const exported = JSON.parse(bench.element("export-text").value);
@@ -382,7 +379,8 @@ test("structured edge editor changes gain/function/parameter, target caps and or
   assert.equal(first.function, "power"); assert.equal(first.exponent, 3); assert.equal(first.gain, Math.fround(.123));
   assert.ok(matrix.rules.filter(rule => rule.target === first.target).every(rule => rule.cap === Math.fround(.4)));
   control(0, 6).value = "9"; await control(0, 6).fire("change"); assert.match(bench.element("status").textContent, /exponent/);
-  assert.equal(control(0, 6).value, "3");
+  assert.equal(control(0, 6)["aria-invalid"], "true");
+  await bench.element("matrix-export").fire("click");assert.equal(JSON.parse(bench.element("export-text").value).profile.rules[0].exponent,3);
   await control(0, 7).children[1].fire("click");
   await bench.element("matrix-export").fire("click"); matrix = JSON.parse(bench.element("export-text").value).profile;
   assert.deepEqual(matrix.rules[1], first);
@@ -411,7 +409,7 @@ test("scoped geometry reads all vertices from both owned models and exports ever
     assert.equal(snapshot.models[role].shapes[0].vertexCount, 3);
   }
   assert.match(snapshot.precision, /not atomically/);
-  bench.element("human").value = '{"Belly":1}'; await bench.element("apply").fire("click");
+  bench.element("human").value = '{"Belly":1}'; await bench.element("human").fire("input");
   assert.equal(bench.element("geometry-export").disabled, true); assert.match(bench.element("geometry-status").textContent, /invalidated/);
 });
 
@@ -465,7 +463,7 @@ test("canonical restore cannot replace a usable custom matrix with unavailable l
   await bench.element("matrix-reset").fire("click"); assert.match(bench.element("status").textContent, /missing linked targets/);
   await bench.element("matrix-export").fire("click"); assert.equal(bench.element("export-text").value, accepted);
   assert.equal(bench.calls.filter(call => call.method === "previews.morphs.set").length, writes);
-  await bench.element("apply").fire("click"); assert.match(bench.element("status").textContent, /Applied/);
+  await bench.element("human").fire("input"); assert.match(bench.element("status").textContent, /Updated both models/);
 });
 
 for (const hostExports of [true, false]) test("large geometry export pages retain every byte " +
@@ -533,7 +531,7 @@ test("actual released SDK keeps explicit human traits outside body controls and 
   height.children[2].value="1.2";await height.children[2].fire("change");
   assert.equal(Math.fround(JSON.parse(bench.element("human-traits").value)["$human.height"]),Math.fround(1.2));
   const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");
-  assert.equal(writes.length,2, "Live import and height edit each update only the wolf; reserved inputs never reach human TRI");
+  assert.equal(writes.length,3, "Opening, import and height edit each update only the wolf; reserved inputs never reach human TRI");
   assert.ok(writes.every(write=>write.params.preview==="opaque:2"));
   assert.equal(Object.keys(bench.previews.get("opaque:1").values).length,0);
   assert.ok(Object.keys(writes[0].params.values).every(name=>core.sourceKind(name)===0));
@@ -546,75 +544,70 @@ test("actual released SDK keeps explicit human traits outside body controls and 
 });
 
 
-test("live human slider updates both validated previews by default and reports the external catalog root",async()=>{
+test("human range and numeric input immediately update both previews without a separate apply step",async()=>{
   const bench=harness();await open(bench);
-  assert.equal(bench.element("live").checked,true);
   assert.match(bench.element("catalog-root").textContent,/isolated.*2 available model/);
-  assert.match(bench.element("live-status").textContent,/Live:/);
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0,"Opening alone does not silently apply coefficients");
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,2,"Opening applies the current vector and matrix to both models");
   const row=bench.element("shared-sliders").children.find(row=>row.children[0].textContent==="Belly");
-  row.children[1].value="0.8";await row.children[1].fire("input");
-  assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.8));
-  assert.ok(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound>0);
-  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");
-  assert.equal(writes.length,2);assert.deepEqual(writes.map(call=>call.params.preview),["opaque:1","opaque:2"]);
+  for(const [control,value]of[[row.children[1],"0.8"],[row.children[2],"-0.25"]]) {
+    const before=bench.calls.length;control.value=value;await control.fire("input");
+    assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(Number(value)));
+    const writes=bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set");
+    assert.equal(writes.length,2);assert.deepEqual(writes.map(call=>call.params.preview),["opaque:1","opaque:2"]);
+  }
 });
 
-test("changed resource selection blocks old-pair live writes and reopening restores live controls",async()=>{
+test("changed resource selection blocks old-pair writes and reopening restores automatic updates",async()=>{
   const bench=harness();await open(bench);
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set").length;
   bench.element("human-model").value="";await bench.element("human-model").fire("change");
-  assert.match(bench.element("pair-status").textContent,/No comparison pair/);
-  assert.equal(bench.previews.size,0);
-  bench.element("human").value='{"Belly":0.7}' ;await bench.element("human").fire("input");
-  assert.equal(bench.element("live").checked,false);assert.equal(bench.element("apply").disabled,true);assert.equal(bench.element("matrix-apply").disabled,true);
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
-  await bench.element("apply").fire("click");assert.match(bench.element("status").textContent,/Open the selected/);
-  await open(bench);assert.equal(bench.element("live").checked,true);
+  assert.match(bench.element("pair-status").textContent,/No comparison pair/);assert.equal(bench.previews.size,0);
+  bench.element("human").value='{"Belly":0.7}';await bench.element("human").fire("input");
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,writes);
+  await open(bench);assert.equal(bench.previews.get("opaque:3").values.Belly,Math.fround(.7));
   assert.match(bench.element("pair-status").textContent,/Pair ready/);
   bench.element("human").value='{"Belly":0.5}';await bench.element("human").fire("input");
-  assert.ok(!bench.previews.has("opaque:1")&&!bench.previews.has("opaque:2"));
-  assert.equal(bench.previews.get("opaque:3").values.Belly,.5);
+  assert.ok(!bench.previews.has("opaque:1")&&!bench.previews.has("opaque:2"));assert.equal(bench.previews.get("opaque:3").values.Belly,.5);
 });
 
 test("resource selection revokes a sent human write before its unsent wolf write and queued vectors",async()=>{
-  let release,started;
+  let release,started,armed=false;
   const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
-  const bench=harness({beforeRequest:async method=>{if(method==="previews.morphs.set"){started();await gate;}}});await open(bench);
+  const bench=harness({beforeRequest:async method=>{if(armed&&method==="previews.morphs.set"){started();await gate;}}});await open(bench);armed=true;
+  const before=bench.calls.length;
   bench.element("human").value='{"Belly":0.2}';const first=bench.element("human").fire("input");await entered;
   bench.element("human").value='{"Belly":0.4}';const queued=bench.element("human").fire("input");
   bench.element("human-model").value="";const changing=bench.element("human-model").fire("change");
-  assert.equal(bench.element("apply").disabled,true);
   assert.match(bench.element("pair-status").textContent,/No comparison pair/);
   assert.equal(bench.calls.filter(call=>call.method==="previews.close").length,0,"Sent write must settle before disposal");
   release();await Promise.all([first,queued,changing]);
-  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set");
-  assert.equal(writes.length,1);assert.equal(writes[0].params.preview,"opaque:1");
-  assert.equal(bench.previews.size,0);assert.equal(bench.element("live").checked,false);
+  const writes=bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set");
+  assert.equal(writes.length,1);assert.equal(writes[0].params.preview,"opaque:1");assert.equal(bench.previews.size,0);
   assert.equal(bench.calls.filter(call=>call.method==="previews.close").length,2);
 });
 
 test("catalog refresh closes a pair whose selected resource disappeared and clears all binding UI",async()=>{
   const modelNames=["human.nif","wolf.nif"],bench=harness({modelNames});await open(bench);
-  await bench.element("apply").fire("click");modelNames.splice(0,1);
+  await bench.element("human").fire("input");modelNames.splice(0,1);
   await bench.element("refresh-models").fire("click");
   assert.equal(bench.element("human-model").value,"");assert.equal(bench.previews.size,0);
-  assert.equal(bench.element("apply").disabled,true);assert.equal(bench.element("live").checked,false);
+  assert.equal(bench.previews.size,0);
   assert.equal(bench.element("shared-sliders").children.length,0);
   assert.match(bench.element("pair-status").textContent,/No comparison pair/);
 });
 
-test("busy geometry reads disable human controls and reject a live write until the operation finishes",async()=>{
+test("busy geometry reads disable human controls and reject writes until the operation finishes",async()=>{
   let release,started;
   const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
   const bench=harness({geometry:true,beforeRequest:async method=>{if(method==="previews.geometry"){started();await gate;}}});await open(bench);
-  const reading=bench.element("geometry-read").fire("click");await entered;
+  const before=bench.calls.length; const reading=bench.element("geometry-read").fire("click");await entered;
   assert.equal(bench.element("human").disabled,true);assert.equal(bench.element("preset").disabled,true);assert.equal(bench.element("weight").disabled,true);
   for(const row of bench.element("shared-sliders").children){assert.equal(row.children[1].disabled,true);assert.equal(row.children[2].disabled,true);}
   bench.element("human").value='{"Belly":0.7}';await bench.element("human").fire("input");
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  assert.equal(bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set").length,0);
   release();await reading;
   assert.equal(bench.element("human").disabled,false);
-  await bench.element("apply").fire("click");assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.7));
+  await bench.element("human").fire("input");assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.7));
 });
 
 test("catalog root replacement revokes old previews even when both filenames remain in the catalog",async()=>{
@@ -622,7 +615,7 @@ test("catalog root replacement revokes old previews even when both filenames rem
   modelRoot.value="replacement-root";await bench.element("refresh-models").fire("click");
   assert.match(bench.element("catalog-root").textContent,/replacement-root/);
   assert.equal(bench.element("human-model").value,"human.nif");assert.equal(bench.element("wolf-model").value,"wolf.nif");
-  assert.equal(bench.previews.size,0);assert.equal(bench.element("apply").disabled,true);assert.equal(bench.element("live").checked,false);
+  assert.equal(bench.previews.size,0);assert.equal(bench.previews.size,0);
   assert.match(bench.element("pair-status").textContent,/No comparison pair/);
 });
 
@@ -642,43 +635,41 @@ test("a refused imported family transition preserves the current human inputs an
   await bench.element("matrix-export").fire("click");assert.equal(JSON.parse(bench.element("export-text").value).profile.id,vanilla.id);
 });
 
-test("matrix changes visibly pause live human edits until explicit application",async()=>{
+test("valid matrix imports and edits immediately update the working pair",async()=>{
   const bench=harness();await open(bench);
+  bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
   const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
   bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});
   await bench.element("matrix-paste-load").fire("click");
-  assert.equal(bench.element("live").checked,false);assert.match(bench.element("live-status").textContent,/Paused:/);
-  bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);
-  assert.equal(bench.element("matrix-apply").disabled,false);assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
-  await bench.element("matrix-apply").fire("click");assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.3));
-  assert.match(bench.element("matrix-apply-status").textContent,/current matrix has been applied/);
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.3));
+  const gain=bench.element("matrix-rows").children[0].children[4].children[0];gain.value="0.25";await gain.fire("input");
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.15));
+  assert.equal(bench.previews.size,2);
 });
 
-test("Reset wolf revokes an earlier live apply's UI receipt while the queued zero still clears the model",async()=>{
-  const bench=harness();await open(bench);
-  bench.element("human").value='{"Belly":0.7}';
-  const applying=bench.element("human").fire("input");
-  const zeroing=bench.element("reset").fire("click");
-  await Promise.all([applying,zeroing]);
-  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,0);
-  assert.equal(bench.element("live").checked,false);
-  assert.match(bench.element("status").textContent,/Zeroed only acknowledged wolf outputs/);
-  assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
-  await bench.element("matrix-apply").fire("click");
-  assert.ok(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound>0);
-  assert.match(bench.element("matrix-apply-status").textContent,/current matrix has been applied/);
+test("rapid automatic human and matrix intents settle to the latest vector and policy",async()=>{
+  let release,started,armed=false,held=false;
+  const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+  const bench=harness({beforeRequest:async(method)=>{if(armed&&!held&&method==="previews.morphs.set"){held=true;started();await gate;}}});await open(bench);armed=true;
+  bench.element("human").value='{"Belly":0.2}';const first=bench.element("human").fire("input");await entered;
+  bench.element("human").value='{"Belly":0.4}';const older=bench.element("human").fire("input");
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});const matrix=bench.element("matrix-paste-load").fire("click");
+  bench.element("human").value='{"Belly":0.8}';const newest=bench.element("human").fire("input");
+  release();await Promise.all([first,older,matrix,newest]);await settle();
+  assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.8));
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.4));assert.equal(bench.previews.size,2);
 });
 
-test("invalid live input never writes and a partial live update closes its owned pair",async()=>{
-  const bench=harness({failWolfSet:true});await open(bench);
+test("invalid human input never writes and a partial update closes only its owned pair",async()=>{
+  let fail=false;
+  const bench=harness({beforeRequest(method,params){if(fail&&method==="previews.morphs.set"&&params.preview==="opaque:2")throw Error("Wolf scoped write failed");}});await open(bench);
+  const writes=bench.calls.filter(call=>call.method==="previews.morphs.set").length;
   bench.element("human").value='{"UnknownHuman":1}';await bench.element("human").fire("input");
-  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,0);assert.equal(bench.previews.size,2);
-  bench.element("human").value='{"Belly":0.7}';await bench.element("human").fire("input");
-  assert.equal(bench.previews.size,0);assert.equal(bench.element("live").checked,false);
-  assert.equal(bench.element("apply").disabled,true);assert.match(bench.element("status").textContent,/Wolf scoped write failed/);
+  assert.equal(bench.calls.filter(call=>call.method==="previews.morphs.set").length,writes);assert.equal(bench.previews.size,2);
+  fail=true;bench.element("human").value='{"Belly":0.7}';await bench.element("human").fire("input");
+  assert.equal(bench.previews.size,0);assert.match(bench.element("status").textContent,/Wolf scoped write failed/);
 });
-
 
 test("actual released SDK carries scoped zoom events and exact zoom-only writes without echo or main-model access",async()=>{
   const bench=harness({zoom:true});await open(bench);
@@ -713,6 +704,157 @@ test("matrix edges retain labeled accessible controls for the responsive card pr
   assert.equal(row.children[1].children[0]["aria-label"],"Human source edge 1");
   assert.equal(row.children[4].children[0]["aria-label"],"gain edge 1");
   const gain=row.children[4].children[0];gain.value="0.1";await gain.fire("change");
-  assert.match(bench.element("matrix-apply-status").textContent,/draft is not applied/);
-  assert.equal(bench.element("matrix-apply").disabled,false);
+  assert.match(bench.element("matrix-apply-status").textContent,/Both previews are up to date/);
+
+});
+
+
+test("matrix numeric input retains its control while zero-gain rows can be edited back into use",async()=>{
+  const bench=harness();await open(bench);
+  bench.element("human").value='{"Belly":0.8}';await bench.element("human").fire("input");
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:1,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  const row=bench.element("matrix-rows").children[0],gain=row.children[4].children[0];gain.focus();
+  gain.value="0";await gain.fire("input");
+  assert.equal(bench.element("matrix-rows").children[0],row);assert.equal(gain.focused,true);
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,0);
+  await bench.element("matrix-export").fire("click");assert.equal(JSON.parse(bench.element("export-text").value).profile.rules.length,0);
+  gain.value="0.5";await gain.fire("input");
+  assert.equal(bench.element("matrix-rows").children[0],row);assert.equal(row.children[4].children[0],gain);assert.equal(gain.value,"0.5");
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.4));
+  await bench.element("matrix-export").fire("click");assert.equal(JSON.parse(bench.element("export-text").value).profile.rules[0].gain,.5);
+});
+
+test("blank nonfinite and incompatible matrix edits retain the last usable policy and both models",async()=>{
+  const bench=harness();await open(bench);
+  bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  await bench.element("matrix-export").fire("click");const accepted=bench.element("export-text").value;
+  const handles=[...bench.previews.keys()],models=JSON.stringify([...bench.previews]);
+  const edit=async(column,value,event="input")=>{
+    const before=bench.calls.length,control=bench.element("matrix-rows").children[0].children[column].children[0];
+    control.value=value;await control.fire(event);
+    assert.equal(bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set").length,0);
+    assert.deepEqual([...bench.previews.keys()],handles);assert.equal(JSON.stringify([...bench.previews]),models);
+    assert.notEqual(bench.element("status").className.indexOf("error"),-1);
+    await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,accepted);
+  };
+  await edit(4,"");await edit(4,"NaN");await edit(4,"Infinity");await edit(5,"2");
+  await edit(1,"Unknown.Custom.Source","change");await edit(2,"Unknown.Custom.Target","change");
+  const gain=bench.element("matrix-rows").children[0].children[4].children[0];gain.value="0.25";await gain.fire("input");
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.15));assert.equal(bench.previews.size,2);
+});
+
+test("incompatible file and pasted matrix imports preserve current policy and inputs",async()=>{
+  const bench=harness();await open(bench);bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
+  await bench.element("matrix-export").fire("click");const accepted=bench.element("export-text").value,human=bench.element("human").value;
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"Missing.Target",gain:1,cap:1}]};
+  for(const file of [false,true]){
+    const text=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile}),before=bench.calls.length;
+    if(file){bench.element("matrix-import").files=[{text:async()=>text}];await bench.element("matrix-import").fire("change");}
+    else{bench.element("matrix-paste").value=text;await bench.element("matrix-paste-load").fire("click");}
+    assert.match(bench.element("status").textContent,/missing linked targets/);assert.equal(bench.previews.size,2);
+    assert.equal(bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set").length,0);
+    assert.equal(bench.element("human").value,human);await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,accepted);
+  }
+});
+
+test("pending model replacement locks matrix rows and pasted imports until its validated commit",async()=>{
+  let release,started;
+  const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+  const bench=harness({sidebarSelection:true,modelNames:["human.nif","human-next.nif","wolf.nif"],beforeRequest:async(method,params)=>{
+    if(method==="previews.create"&&params.name==="human-next.nif"){started();await gate;}
+  }});await open(bench);
+  await bench.element("matrix-export").fire("click");const accepted=bench.element("export-text").value;
+  bench.selection({root:"isolated",name:"human-next.nif"});await entered;
+  const row=bench.element("matrix-rows").children[0],gain=row.children[4].children[0];
+  assert.equal(gain.disabled,true);assert.equal(row.children[1].children[0].disabled,true);
+  for(const id of ["matrix-paste","matrix-paste-load","matrix-import","matrix-reset","matrix-add","matrix-constant"])assert.equal(bench.element(id).disabled,true,id);
+  gain.value="0.123";await gain.fire("input");bench.element("matrix-paste").value="{}";await bench.element("matrix-paste-load").fire("click");
+  await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,accepted);
+  release();await settle();await settle();
+  assert.equal(bench.previews.size,2);assert.equal(bench.element("human-model").value,"human-next.nif");
+  assert.equal(bench.element("matrix-paste-load").disabled,false);assert.equal(bench.element("matrix-rows").children[0].children[4].children[0].disabled,false);
+  await bench.element("matrix-export").fire("click");assert.equal(bench.element("export-text").value,accepted);
+});
+
+
+test("numeric input followed by unchanged change retains the matching pending acknowledgement",async()=>{
+  let release,started,armed=false,held=false;
+  const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+  const bench=harness({beforeRequest:async method=>{if(armed&&!held&&method==="previews.morphs.set"){held=true;started();await gate;}}});await open(bench);
+  const gain=bench.element("matrix-rows").children[0].children[4].children[0];armed=true;gain.value="0.123";
+  const typing=gain.fire("input");await entered;await gain.fire("change");release();await typing;await settle();
+  assert.match(bench.element("matrix-apply-status").textContent,/Both previews are up to date/);
+  assert.equal(bench.previews.size,2);
+});
+
+test("matrix sources preserve the kernel's ASCII-folded provider identity",async()=>{
+  const bench=harness();await open(bench);bench.element("human").value='{"Belly":0.6}';await bench.element("human").fire("input");
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  const source=bench.element("matrix-rows").children[0].children[1].children[0];source.value="belly";await source.fire("change");
+  await bench.element("matrix-export").fire("click");assert.equal(JSON.parse(bench.element("export-text").value).profile.rules[0].source,"belly");
+  assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.3));assert.equal(bench.previews.size,2);
+});
+
+
+test("restoring the accepted numeric value after an invalid pending edit acknowledges the final intent",async()=>{
+  let release,started,armed=false,held=false;
+  const gate=new Promise(resolve=>{release=resolve;}),entered=new Promise(resolve=>{started=resolve;});
+  const bench=harness({beforeRequest:async method=>{if(armed&&!held&&method==="previews.morphs.set"){held=true;started();await gate;}}});await open(bench);
+  bench.element("human").value='{"Belly":0.8}';await bench.element("human").fire("input");
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.25,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  const gain=bench.element("matrix-rows").children[0].children[4].children[0];armed=true;gain.value="0.5";
+  const first=gain.fire("input");await entered;gain.value="";await gain.fire("input");
+  assert.equal(gain["aria-invalid"],"true");assert.match(bench.element("status").textContent,/finite gain/);
+  gain.value="0.5";const recovered=gain.fire("input");release();await Promise.all([first,recovered]);await settle();
+  assert.equal(gain["aria-invalid"],"false");assert.match(bench.element("matrix-apply-status").textContent,/Both previews are up to date/);
+  assert.notEqual(bench.element("status").className,"error");assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.4));
+});
+
+test("a compatible imported family transition consumes the incoming vector and traits before automatic application",async()=>{
+  const from=catalog.profiles.find(p=>p.family==="3BA"),to=catalog.profiles.find(p=>p.family==="CBBE");
+  const names=[...new Set([from,to].flatMap(p=>p.rules.filter(r=>r.source&&core.sourceKind(r.source)===0).map(r=>r.source)))];
+  const wolf=[...new Set([from,to].flatMap(core.matrixTargets))];
+  const bench=harness({humanNamesOverride:names,wolfNamesOverride:wolf});await open(bench);
+  const traits={"$human.height":1.1},human={Belly:.7},before=bench.calls.length;
+  bench.element("import").files=[{name:"compatible-family.json",text:async()=>JSON.stringify({profileId:to.id,humanValues:human,actorWeight:.9,humanTraits:traits})}];
+  await bench.element("import").fire("change");
+  assert.equal(bench.element("profile").value,to.id);assert.deepEqual(JSON.parse(bench.element("human").value),{...core.validateHuman(human)});
+  assert.equal(Number(bench.element("actor-weight").value),core.validateActorWeight(.9));assert.deepEqual(JSON.parse(bench.element("human-traits").value),{...core.validateTraits(traits)});
+  assert.equal(bench.previews.size,2);assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.7));
+  const writes=bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set"&&call.params.preview==="opaque:1");
+  assert.equal(writes.length,1,"A family transition must not apply a neutral old input vector before consuming the imported vector");
+  const expected=core.evaluateMatrix(to,human,.9,traits).values;
+  for(const[name,value]of Object.entries(expected))assert.equal(bench.previews.get("opaque:2").values[name],value,name);
+});
+
+
+test("a replacement missing retained human inputs is refused before the old pair is retired",async()=>{
+  const bench=harness({sidebarSelection:true,modelNames:["human.nif","human-next.nif","wolf.nif"],humanNamesOverride:["Belly","HumanOther"],namesByModel:{"human-next.nif":["Belly"]}});await open(bench);
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  bench.element("human").value='{"Belly":0.8,"HumanOther":0.3}';await bench.element("human").fire("input");
+  const pair=[...bench.previews.keys()],models=JSON.stringify([...bench.previews]),before=bench.calls.length;
+  bench.selection({root:"isolated",name:"human-next.nif"});await settle();await settle();
+  assert.deepEqual([...bench.previews.keys()],pair);assert.equal(JSON.stringify([...bench.previews]),models);
+  assert.equal(bench.element("human-model").value,"human.nif");assert.match(bench.element("status").textContent,/missing.*HumanOther/i);
+  assert.equal(bench.calls.slice(before).filter(call=>call.method==="previews.morphs.set").length,0);
+  assert.ok(bench.calls.slice(before).filter(call=>call.method==="previews.close").every(call=>!pair.includes(call.params.preview)));
+});
+
+
+test("Export matrix directly requests one complete normalized host download without another button",async()=>{
+  const bench=harness({hostExports:true});await open(bench);
+  const profile={...catalog.profiles[0],rules:[{source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1}]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  const gain=bench.element("matrix-rows").children[0].children[4].children[0];gain.value="0";await gain.fire("input");
+  const before=bench.calls.length;await bench.element("matrix-export").fire("click");
+  const requests=bench.calls.slice(before).filter(call=>call.method==="exports.prepare");assert.equal(requests.length,1);
+  const download=requests[0].params;assert.equal(download.format,"json");assert.equal(download.filename,profile.id+".wolf-matrix.json");
+  assert.equal(JSON.parse(download.text).kind,"claw-wolf-matrix");assert.equal(JSON.parse(download.text).profile.rules.length,0);
+  assert.equal(download.text,bench.element("export-text").value);assert.equal(bench.element("export-panel").open,false);
 });

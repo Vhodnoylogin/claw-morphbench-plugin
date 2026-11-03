@@ -1,7 +1,14 @@
 # CLAW human/wolf comparison — Morphbench plugin
 
-This development branch builds **0.4.0-dev.11**, the sparse-matrix, actor-weight and human-trait candidate.
-The published 0.3.0 source baseline remains on `main`. This candidate adds
+This development branch builds **0.4.0-dev.12**, the sparse-matrix, actor-weight and human-trait candidate.
+The published 0.3.0 source baseline remains on `main`. Dev.12 puts human sliders,
+the immediately editable matrix and Export/Import matrix in that order. Resource
+configuration and diagnostics are collapsed; valid edits immediately update both
+previews without Calculate/Apply/Live controls. The shared evaluator and host API
+are unchanged. Replacement additionally preflights the retained full human input
+vector before retiring a working model. The packaged consumer passes 53 public-SDK
+harness checks; rendered-browser acceptance is recorded separately.
+This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
@@ -111,27 +118,30 @@ Production source is under `src/main/morphbench-plugin`, tests under
    **Load and enable** accepts a package at another path. Updating the same ID
    requires disabling it, using the manager's update operation, and enabling it
    again. The shared-kernel plugin
-   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.11`.
+   retains the existing ID `claw-human-link-dev-001`; this branch uses `0.4.0-dev.12`.
 2. Declare the actual human resources: **HIMBO 5.8 male**, **CBBE 2.0.3 female** or
    **3BA 2.48 female**, **BHUNP 3.34 Advanced Ver4 female**, **classic UNP Renewal 4.6 female**, or **Vanilla male/female**. Select the exact human and wolf catalog entries and click
    **Open comparison pair**. The plugin opens no models automatically.
 3. Import a full human coefficient JSON, a retained evidence-fixture JSON with
    `humanValues` and optional per-name provenance, or a BodySlide preset XML.
    Review the human controls and the read-only wolf calculation.
-4. **Apply current values** writes the human vector to the human model and its
-   mapped outputs to the wolf. After a pair is successfully validated, live human
-   slider updates start enabled; valid human preset imports also apply while live
-   is enabled. Opening alone does not silently apply existing coefficients.
-   Resource/family changes and matrix edits pause live writes until reviewed.
-5. **Zero owned wolf outputs** preserves the human vector and unowned
-   wolf controls. **Close comparison pair** disposes this plugin's two previews.
+4. **Human morphs** is the primary panel: each named slider and number field
+   immediately updates the human and derived wolf previews. There is no
+   Calculate/Apply button or live-mode switch. A validated pair also receives the
+   retained inputs when it opens or successfully replaces one side.
+5. Edit the **Human → wolf matrix** directly below the sliders. Valid coefficient
+   and function edits update immediately. **Export matrix** and **Import matrix**
+   sit directly underneath it. Model settings, human presets/traits, game XML and
+   numeric/vertex diagnostics are collapsed secondary controls. Invalid edits or
+   imports preserve the last valid matrix and working pair. A temporarily blank
+   numeric field remains editable and is never treated as zero.
 
 On a host advertising `models.selection.subscribe`, **Left model list replaces**
 selects Human or Werewolf. Choosing a mesh in the host's left sidebar replaces only
 that side, retaining the other preview, edited matrix and input values. A replacement
 is validated before the old model closes; an unreadable or incompatible model keeps
-the current pair. Live updates pause until the family and retained inputs are reviewed
-and applied. Family/sex are explicit declarations, never inferred from filenames.
+the current pair. Successful replacements immediately receive the retained inputs
+and matrix. Family/sex remain explicit declarations, never inferred from filenames.
 Picking an already open resource leaves the pair unchanged. The optional
 `previews.create.before` host feature preserves its original panel position.
 Older hosts retain the plugin's explicit resource selectors; their main model list
@@ -324,8 +334,11 @@ the default function and is omitted from serialized presets. Invalid structural
 fields still fail on inactive edges. Active duplicates, inconsistent target caps,
 source/target name intersections and nonfinite numbers are rejected.
 An empty matrix is valid; applying it clears only previously acknowledged outputs.
-Matrix edits turn off live apply and calculate locally until
-the explicit **Apply to both previews** action.
+Valid matrix edits update both previews immediately. Numeric edits retain focus
+and zero-gain rows while typing; the shared evaluator and exported policy still
+normalize/prune inactive edges. New unavailable custom body sources are rejected
+for a bound pair; intentionally absent canonical sources retain their existing
+zero-input semantics. Lifecycle operations lock all matrix mutations.
 
 The function set is `linear`, `positive`, `negative`, `smoothstep`, `power`
 (integer exponent 1..8, preserving input sign) and `constant` (empty source with a
