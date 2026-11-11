@@ -12,7 +12,7 @@ This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. The development build pins CLAW 0.9.0 release candidate `48b8d4f` and its seven-profile catalog, including
+coefficients. The development build pins CLAW 0.9.0 release candidate `c91ade2` and its seven-profile catalog, including
 BHUNP 3.34 Advanced Ver4 and classic UNP Renewal 4.6. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
