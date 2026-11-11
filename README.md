@@ -12,7 +12,7 @@ This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. Dev.10 pins CLAW `394fa8d` and its seven-profile 0.8 catalog, including
+coefficients. The development build pins CLAW 0.9.0 release candidate `48b8d4f` and its seven-profile catalog, including
 BHUNP 3.34 Advanced Ver4 and classic UNP Renewal 4.6. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
@@ -98,12 +98,14 @@ It contains this browser plugin, its tests and publication artwork. CLAW's game
 DLL, body authoring and runtime belong to [CLAW - Customizable Lycanthrope Appearance and Weight](https://github.com/Vhodnoylogin/claw).
 
 `dependencies.json` pins the exact shared C++ evaluator and MorphLinks.xml to
-one committed CLAW feature revision, with per-file SHA256.
+one committed CLAW revision, with per-file SHA256. The complete portable source
+closure includes MatrixKernel.h, MatrixKernel.cpp and Projection.h, and every
+compiled file contributes to the recorded kernel source digest.
 They remain external build dependencies; there is no copied C++ evaluator or
 alternative conversion formula in this repository. The builder accepts
-`--claw-source-dir` for exact matching local files, or downloads the three pinned
+`--claw-source-dir` for exact matching local files, or downloads the four pinned
 raw files into ignored `target/dependencies/`. Every file is verified before use.
-A newer local checkout is accepted only when those three files match the pins.
+A newer local checkout is accepted only when all four files match the pins.
 
 Production source is under `src/main/morphbench-plugin`, tests under
 `src/test/morphbench-plugin`, and authored media/publication text under

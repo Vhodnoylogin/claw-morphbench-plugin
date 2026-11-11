@@ -9,9 +9,9 @@ const evaluate=human=>core.evaluateMatrix(profile,human,.5).values;
 test("BHUNP is the independently identified Advanced Ver4 profile, with actual Low/High source names",()=>{
   assert.ok(profile);assert.equal(profile.id,"CLAW.BHUNP.3.34.AdvancedV4");
   assert.equal(profile.version,"3.34");assert.equal(profile.sex,"female");assert.equal(profile.calibration,"bhunp-v4-contract1");
-  assert.equal(profile.rules.length,169);assert.equal(core.matrixTargets(profile).length,26);
+  assert.equal(profile.rules.length,201);assert.equal(core.matrixTargets(profile).length,26);
   const ordinary=[...new Set(profile.rules.filter(r=>r.source&&core.sourceKind(r.source)===0).map(r=>r.source))];
-  assert.equal(ordinary.length,47);assert.equal(ordinary.filter(n=>/ (Low|High)$/.test(n)).length,16);
+  assert.equal(ordinary.length,62);assert.equal(ordinary.filter(n=>/ (Low|High)$/.test(n)).length,16);
   for(const name of ["UNP Low","UNP High","UNPB Oppai v3.2 Low","UNPB Oppai v3.2 High","Biceps","Triceps"])assert.ok(ordinary.includes(name));
   for(const alias of ["UNP","UNPB","BreastsNewSH","ArmsBiceps","TorsoChest"] )assert.ok(!ordinary.includes(alias));
   assert.deepEqual(input.parseMatrixJSON(input.matrixJSON(profile)),core.validateMatrix(profile));

@@ -26,6 +26,7 @@ TARGET = REPOSITORY / "target"
 PIN = json.loads((REPOSITORY / "dependencies.json").read_text(encoding="utf-8"))["claw"]
 SOURCE_RELATIVE = "src/main/resources/profiles/MorphLinks.xml"
 SHARED_RELATIVE = "src/main/cpp/shared"
+KERNEL_SOURCES = ("MatrixKernel.h", "MatrixKernel.cpp", "Projection.h")
 DEPENDENCY_ROOT = TARGET / "dependencies/claw" / PIN["commit"]
 SOURCE = DEPENDENCY_ROOT / SOURCE_RELATIVE
 ASSETS = ("addon.json", "index.html", "core.js", "pair.js", "input.js", "preview-controller.js", "main.js", "style.css")
@@ -194,7 +195,7 @@ def compile_kernel(output_dir: Path, compiler: str | None = None,
     if not compiler:
         raise ValueError("Provide --wasm-compiler or CLAW_WASM_COMPILER pointing to clang with wasm-ld support")
     shared = dependency_root(claw_source_dir) / SHARED_RELATIVE
-    sources = {name: (shared / name).read_bytes() for name in ("MatrixKernel.h", "MatrixKernel.cpp")}
+    sources = {name: (shared / name).read_bytes() for name in KERNEL_SOURCES}
     digest = hashlib.sha256(b"".join(name.encode()+b"\0"+data for name, data in sources.items())).hexdigest()
     wasm = output_dir / "matrix-kernel.wasm"
     command = [str(compiler), "--target=wasm32", "-x", "c++", "-std=c++17", "-O2", "-nostdlib",
@@ -295,7 +296,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--output-dir", type=Path, default=TARGET / "plugin")
     parser.add_argument("--wasm-compiler", help="External clang executable with wasm32/wasm-ld support")
-    parser.add_argument("--claw-source-dir", type=Path, help="Local CLAW checkout containing all three exact hash-pinned dependency files; otherwise fetch them into ignored target/")
+    parser.add_argument("--claw-source-dir", type=Path, help="Local CLAW checkout containing all exact hash-pinned dependency files; otherwise fetch them into ignored target/")
     args = parser.parse_args()
     print(json.dumps(build(args.output_dir, args.wasm_compiler, args.claw_source_dir), indent=2))
 

@@ -81,6 +81,25 @@ class BuildTests(unittest.TestCase):
                 with self.assertRaisesRegex(ValueError, "Missing pinned"):
                     builder.dependency_root(Path(directory))
 
+    def test_transitive_projection_is_pinned_and_checked_during_compilation(self):
+        relative = builder.SHARED_RELATIVE + "/Projection.h"
+        self.assertIn(relative, builder.PIN["files"])
+        self.assertIn("Projection.h", builder.KERNEL_SOURCES)
+        with tempfile.TemporaryDirectory(dir=builder.TARGET) as directory:
+            root = Path(directory)
+            shared = root / builder.SHARED_RELATIVE
+            shared.mkdir(parents=True)
+            for name in builder.KERNEL_SOURCES:
+                (shared / name).write_bytes(b"original")
+
+            def change_projection(*args, **kwargs):
+                (shared / "Projection.h").write_bytes(b"changed while compiling")
+
+            with patch.object(builder, "dependency_root", return_value=root), \
+                    patch.object(builder.subprocess, "run", side_effect=change_projection):
+                with self.assertRaisesRegex(ValueError, "changed during compilation"):
+                    builder.compile_kernel(root, compiler="test-clang")
+
     def test_function_parameters_and_constant_bias_are_preserved(self):
         source = self.source.replace(b'<Rule source="Arms"', b'<Rule function="power" exponent="3" source="Arms"', 1)
         first = builder.catalog_from_bytes(source)["profiles"][0]["rules"][4]

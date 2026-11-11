@@ -180,11 +180,11 @@ test("actual SDK selects the BHUNP matrix, applies raw body coefficients and exp
   const bench=harness({humanNamesOverride:names,wolfNamesOverride:core.matrixTargets(profile)});await settle();
   assert.match(bench.element("profile").children.find(option=>option.value===profile.id).textContent,/BHUNP 3\.34 Advanced Ver4/);
   bench.element("profile").value=profile.id;await bench.element("profile").fire("change");await open(bench);
-  assert.equal(bench.previews.size,2);assert.equal(bench.element("shared-sliders").children.length,47);
+  assert.equal(bench.previews.size,2);assert.equal(bench.element("shared-sliders").children.length,62);
   const human={Arms:1,Biceps:.75,Triceps:.5,ChubbyArms:.2,"UNP Low":-.25,Breasts:.3};
   bench.element("human").value=JSON.stringify(human);await bench.element("human").fire("input");
   const expected=core.evaluateMatrix(profile,human,.5).values;
-  const actualHuman=bench.previews.get("opaque:1").values;assert.equal(Object.keys(actualHuman).length,47);
+  const actualHuman=bench.previews.get("opaque:1").values;assert.equal(Object.keys(actualHuman).length,62);
   for(const name of names)assert.equal(actualHuman[name],Math.fround(human[name]??0),name);
   for(const [key,value]of Object.entries(expected))assert.equal(bench.previews.get("opaque:2").values[key],value,key);
   assert.equal(bench.element("game-female-family").value,"BHUNP");
@@ -281,7 +281,8 @@ test("actual SDK connects paired UI, preserves human-only values and derives wol
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound, 1);
   assert.equal(bench.previews.get("opaque:2").values.CLAWHeadEarSize, 0);
   assert.equal(bench.previews.get("opaque:2").values["Unowned.WolfControl"], .4);
-  assert.match(bench.element("unmapped").textContent, /Butt=-0.5/);
+  assert.match(bench.element("unmapped").textContent, /BigButt=-0.25/);
+  assert.doesNotMatch(bench.element("unmapped").textContent, /(?:^|, )Butt=-0.5/);
   assert.deepEqual(bench.legacyValues, { LegacyMain: .33 });
   assert.ok(!bench.calls.some(call => ["models.open", "morphs.set", "morphs.reset", "view.set", "previews.view.set"].includes(call.method)));
   await bench.element("close-pair").fire("click"); assert.equal(bench.previews.size, 0);
