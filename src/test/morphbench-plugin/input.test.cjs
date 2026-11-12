@@ -1,6 +1,17 @@
 "use strict";
 const assert = require("node:assert/strict"), { test } = require("node:test");
 const input = require("../../main/morphbench-plugin/web/input.js");
+test("preset endpoints and provenance follow morph identity while preserving the first authored spelling", () => {
+  const preset = input.fromRows("Human", "CBBE", [
+    { name: "Muscle", size: "small", value: "20" }, { name: "muscle", size: "big", value: "80" }]);
+  assert.deepEqual(Object.keys(preset.endpoints), ["Muscle"]);
+  assert.equal(input.effective(preset, .5).Muscle, .5);
+  assert.throws(() => input.fromRows("Human", "CBBE", [
+    { name: "Muscle", size: "small", value: "20" }, { name: "MUSCLE", size: "small", value: "20" }]), /Duplicate/);
+  const parsed = input.parseJSON(JSON.stringify({ humanValues: { muscle: .5 }, humanValueProvenance: { Muscle: "Captured morph" } }));
+  assert.deepEqual({ ...parsed.values }, { muscle: .5 });
+  assert.equal(parsed.provenance.muscle, "Captured morph");
+});
 test("preset percentages normalize once, preserve negative endpoints and interpolate weight0/.5/1", () => {
   const preset = input.fromRows("Human", "CBBE", [
     { name: "Butt", size: "small", value: "-50" }, { name: "Butt", size: "big", value: "100" },

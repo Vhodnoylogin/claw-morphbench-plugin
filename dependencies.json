@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "claw": {
     "repository": "https://github.com/Vhodnoylogin/claw",
-    "commit": "e91513065829bb6892acca6762bf54ef8d693bae",
+    "commit": "8dc9aae4a73ac4787cb5d716b63ae39b69119014",
     "files": {
       "src/main/cpp/shared/MatrixKernel.h": "c8ad6735c5305851f29795db5c5674d75f572390eba286f1a1dc3ddf53feecbb",
       "src/main/cpp/shared/MatrixKernel.cpp": "d694f06d0ab5ca740926c9be084559a6d7659a8ed877595dcf6ab6a48f03e80d",

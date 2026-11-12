@@ -22,11 +22,11 @@ limit the plugin or file-profile parser.
 2. Normalize gain to float32 and omit `abs(gain) <= 1e-6F`, including signed zero.
    The cutoff is the float32 representation of 1e-6. Its immediately larger
    float32 value is active. Omitted edges are not stored, captured or exported.
-3. On surviving edges, reject duplicate exact source/target pairs, inconsistent
+3. On surviving edges, reject duplicate provider-identity source/target pairs, inconsistent
    caps for a target and any provider-folded source/target intersection across edges.
    SKEE identity uses deterministic ASCII folding, A–Z to a–z. Authored spelling
-   is retained; active case-only aliases within sources/targets are rejected.
-   Same-spelling sources may feed different targets, and same-spelling targets
+   is retained; references may use different case for the same source or target.
+   One source identity may feed different targets, and one target identity
    may receive several sources with a consistent cap. At most 64 distinct active
    targets are supported.
 4. Evaluate ordered surviving contributions with the shared kernel. Clamp each
@@ -49,8 +49,9 @@ therefore cannot disappear behind a zero or near-zero coefficient.
 
 Targets are printable-ASCII identifiers rather than a hardcoded body list.
 A loaded model must provide every active target before applying a matrix. The
-Morphbench setter uses its exact loaded spelling: a mismatched target is rejected
-rather than silently renamed. Ambiguous model/vector case aliases are rejected.
+Morphbench setter uses its exact loaded spelling: the adapter resolves authored
+and supplied names case-insensitively to that spelling before a write. Ambiguous
+model/vector case aliases are rejected before any morph writes.
 Names are at most 160 characters, without surrounding whitespace or controls;
 reserved JavaScript prototype identifiers remain unavailable at this boundary.
 Native XML import/export additionally refuses XML delimiters/entities and

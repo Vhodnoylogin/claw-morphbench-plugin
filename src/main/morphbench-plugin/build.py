@@ -162,13 +162,13 @@ def catalog_from_bytes(data: bytes, *, retain_inactive: bool = False, max_rules:
                 if not name:
                     continue
                 identity = provider_identity(name)
-                if identity in names and names[identity] != name:
-                    raise ValueError("Ambiguous active provider case aliases")
-                names[identity] = name
-            if (source, target) in pairs or (target in caps and caps[target] != cap):
+                names.setdefault(identity, name)
+            source_identity, target_identity = provider_identity(source), provider_identity(target)
+            if ((source_identity, target_identity) in pairs
+                    or (target_identity in caps and caps[target_identity] != cap)):
                 raise ValueError("Duplicate active morph rule or inconsistent cap")
-            pairs.add((source, target))
-            caps[target] = cap
+            pairs.add((source_identity, target_identity))
+            caps[target_identity] = cap
             rules.append(edge)
         if len(caps) > max_targets:
             raise ValueError(f"A sparse matrix supports at most {max_targets} active targets")

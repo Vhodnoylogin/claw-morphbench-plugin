@@ -12,7 +12,7 @@ This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. The development build pins CLAW commit `e91513065829bb6892acca6762bf54ef8d693bae` and its seven-profile catalog, including
+coefficients. The development build pins CLAW commit `8dc9aae4a73ac4787cb5d716b63ae39b69119014` and its seven-profile catalog, including
 BHUNP 3.34 Advanced Ver4 and classic UNP Renewal 4.6. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
@@ -336,9 +336,10 @@ human-source/wolf-target edges. Each edge has a gain and a function. One cap is
 shared by every edge to the same target; changing a cap updates all those edges.
 Add source or constant edges, remove them, and change their accumulation order.
 Morph names use printable ASCII identifiers and preserve their authored spelling.
-SKEE provider identity folds ASCII A–Z to a–z: case-only source/target aliases
-and folded source/output collisions are rejected. Sources repeated with the same
-spelling across different edges remain valid. Target names come from the loaded wolf model;
+SKEE provider identity folds ASCII A–Z to a–z: repeated references across distinct
+edges may differ in case and share one numeric input or output. Duplicate identity
+edges and folded source/output collisions are rejected. Preview writes resolve
+authored names to the loaded TRI spelling. Target names come from the loaded wolf model;
 there is no body-part or sex-specific name whitelist. With a pair open, edits and
 imports reject missing target names without replacing the last valid matrix.
 The controller validates both model domains again before writes.

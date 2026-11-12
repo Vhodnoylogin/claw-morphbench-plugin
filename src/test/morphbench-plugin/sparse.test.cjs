@@ -22,7 +22,7 @@ test("shared float32 gain boundary is the authority and zero-edge matrices are n
   assert.deepEqual(kernel.evaluate([],1).values,[0]);
 });
 
-test("generic morph names preserve spelling with provider-folded source lookup and alias rejection",()=>{
+test("generic morph names preserve spelling with provider-folded references and unambiguous values",()=>{
   const profile=base([edge()]);
   const result=core.evaluateMatrix(profile,{CLAWCustomHuman:.5,Unmapped:1});
   assert.deepEqual({...result.values},{"Author.Custom":.5});
@@ -33,12 +33,27 @@ test("generic morph names preserve spelling with provider-folded source lookup a
   assert.throws(()=>core.validateMatrix(base([edge(1,{source:"Author.Custom"})])),/overlap/);
   assert.throws(()=>core.validateMatrix(base([edge(),edge(1,{source:"Author.Custom",target:"Another"})])),/overlap/);
   assert.throws(()=>core.validateMatrix(base([edge(1,{source:"a",target:"A"})])),/overlap/);
-  assert.throws(()=>core.validateMatrix(base([edge(),edge(1,{source:"clawcustomhuman",target:"Other"})])),/case aliases/);
-  assert.throws(()=>core.validateMatrix(base([edge(),edge(1,{source:"Other",target:"author.custom"})])),/case aliases/);
+  assert.equal(core.validateMatrix(base([edge(),edge(1,{source:"clawcustomhuman",target:"Other"})])).rules.length,2);
+  const combined=core.evaluateMatrix(base([edge(),edge(1,{source:"Other",target:"author.custom"})]),{CLAWCustomHuman:.25,other:.5});
+  assert.deepEqual({...combined.values},{"Author.Custom":.75});
   const folded=core.evaluateMatrix(profile,{clawcustomhuman:.5});
   assert.equal(folded.values["Author.Custom"],.5);assert.deepEqual(folded.unmapped,[]);
   assert.throws(()=>core.validateHuman({Human:1,human:1}),/case aliases/);
   assert.throws(()=>core.validateHuman({"Г©":1}),/ASCII/);
+});
+
+test("case variants share numerical targets while identity duplicate edges, caps and limits remain checked",()=>{
+  const canonical=base([edge(.25,{source:"A",target:"Target"}),edge(.5,{source:"B",target:"Target"}),edge(.5,{source:"A",target:"Other"})]);
+  const mixed=base([edge(.25,{source:"A",target:"Target"}),edge(.5,{source:"b",target:"tARGET"}),edge(.5,{source:"a",target:"Other"})]);
+  assert.deepEqual(core.evaluateMatrix(mixed,{a:.8,b:.4}).values,core.evaluateMatrix(canonical,{A:.8,B:.4}).values);
+  assert.deepEqual(core.matrixTargets(mixed),["Target","Other"]);
+  assert.equal(core.evaluateMatrix(mixed,{a:.8,b:.4}).rows.find(row=>row.target==="Target").contributions.length,2);
+  const saved=JSON.parse(input.matrixJSON(mixed)).profile;
+  assert.equal(saved.rules[1].target,"tARGET");assert.equal(saved.rules[2].source,"a");
+  assert.throws(()=>core.validateMatrix(base([edge(),edge(1,{source:"clawcustomhuman",target:"AUTHOR.CUSTOM"})])),/Duplicate/);
+  assert.throws(()=>core.validateMatrix(base([edge(),edge(1,{source:"Other",target:"author.custom",cap:.5})])),/cap/);
+  const full=Array.from({length:64},(_,i)=>edge(1,{source:"H"+i,target:"Target"+i}));
+  assert.equal(core.matrixTargets(base([...full,edge(1,{source:"Extra",target:"target0"})])).length,64);
 });
 
 test("pruning follows structural validation and precedes duplicate, cap and collision checks",()=>{
@@ -116,7 +131,7 @@ test("game XML exports exactly the selected male/female pair without losing edit
   assert.throws(()=>core.exportCatalog(catalog,cbbe,"3BA"),/edited female family/);
 });
 
-function scopedHost(wolfNames){
+function scopedHost(wolfNames,humanNames=["Input","Unmapped","CLAWSource"]){
   const previews=new Map(),calls=[];let next=0;
   const sdk={async connect(){return{apiVersion:1,capabilities:PreviewController.requiredCapabilities,previewLimits:{maxPreviews:2}};},
     on(){return()=>{};},async request(method,params){
@@ -124,7 +139,7 @@ function scopedHost(wolfNames){
       if(method==="models.list")return{entries:[{name:"human"},{name:"wolf"}]};
       if(method==="previews.create"){
         const preview="custom:"+(++next),human=params.name==="human";
-        previews.set(preview,{name:params.name,names:human?["Input","Unmapped","CLAWSource"]:wolfNames,
+        previews.set(preview,{name:params.name,names:human?humanNames:wolfNames,
           values:human?{}:{Unrelated:.75}});return{preview,name:params.name};
       }
       if(method==="previews.link")return JSON.parse(JSON.stringify(params));
@@ -143,12 +158,12 @@ function scopedHost(wolfNames){
 
 test("custom loaded models validate selected targets before writes and retain the complete human vector",async()=>{
   const canonical=catalog.profiles.find(profile=>profile.family==="HIMBO");
-  const selected={...canonical,rules:[edge(1,{source:"INPUT",target:"Author.Custom"})]};
+  const selected={...canonical,rules:[edge(.5,{source:"INPUT",target:"AUTHOR.Custom"}),edge(.5,{source:"unmapped",target:"author.custom"})]};
   const fixture=scopedHost(["Author.Custom","Unrelated"]);
   const pair=await fixture.controller.open(canonical.id,"human","wolf",selected);
-  const result=await fixture.controller.apply({Input:.5,Unmapped:-.25,CLAWSource:.75},selected);
-  assert.deepEqual(result.humanValues,{Input:.5,Unmapped:-.25,CLAWSource:.75});
-  assert.deepEqual(result.wolfValues,{"Author.Custom":.5});
+  const result=await fixture.controller.apply({input:.5,UNMAPPED:.25,clawsource:.75},selected);
+  assert.deepEqual(result.humanValues,{Input:.5,Unmapped:.25,CLAWSource:.75});
+  assert.deepEqual(result.wolfValues,{"Author.Custom":.375});
   assert.equal(fixture.previews.get(pair.wolf.preview).values.Unrelated,.75);
   await fixture.controller.apply({Input:.5,Unmapped:-.25,CLAWSource:.75},{...selected,rules:[]});
   assert.equal(fixture.previews.get(pair.wolf.preview).values["Author.Custom"],0);
@@ -162,6 +177,13 @@ test("custom loaded models validate selected targets before writes and retain th
   const ambiguous=scopedHost(["Author.Custom","author.custom","Unrelated"]);
   await assert.rejects(ambiguous.controller.open(canonical.id,"human","wolf",selected),/case aliases/);
   assert.equal(ambiguous.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  const ambiguousHuman=scopedHost(["Author.Custom","Unrelated"],["Input","input"]);
+  await assert.rejects(ambiguousHuman.controller.open(canonical.id,"human","wolf",selected),/case aliases/);
+  assert.equal(ambiguousHuman.calls.filter(call=>call.method==="previews.morphs.set").length,0);
+  const valid=scopedHost(["Author.Custom","Unrelated"]);
+  await valid.controller.open(canonical.id,"human","wolf",selected);
+  await assert.rejects(valid.controller.apply({Input:.5,input:.5},selected),/case aliases/);
+  assert.equal(valid.calls.filter(call=>call.method==="previews.morphs.set").length,0);
 });
 
 test("coefficient snapshots and comparisons do not invent distinct case-alias outputs",()=>{
@@ -194,15 +216,17 @@ if(process.argv[3]&&process.argv[4])test("native parser and WASM agree for gener
   compare(base([]),{});
   compare(base([edge()]),{clawcustomhuman:.5});
   compare(base([edge(.8,{source:"Input"}),edge(.25,{source:"",function:"constant",value:.4})]),{Input:.6});
+  compare(base([edge(.25,{source:"Input",target:"Target"}),edge(.5,{source:"Other",target:"target"}),
+    edge(.5,{source:"input",target:"Another"})]),{INPUT:.8,other:.4});
   compare(base(Array.from({length:64},(_,i)=>edge(1,{source:"H"+i,target:"T"+i}))),Object.fromEntries(Array.from({length:64},(_,i)=>["H"+i,.25])));
   fs.writeFileSync(path.join(directory,"sparse-native-conformance.json"),JSON.stringify({cases:cases.length,allMatched:true,details:cases},null,2)+"\n");
 });
 
-if(process.argv[3]&&process.argv[4])test("native parser rejects active aliases, invalid inactive structure and exceeded sparse limits",()=>{
+if(process.argv[3]&&process.argv[4])test("native parser rejects identity duplicate edges, inconsistent caps, invalid inactive structure and exceeded sparse limits",()=>{
   const native=process.argv[3],directory=path.resolve(process.argv[4]);fs.mkdirSync(directory,{recursive:true});
   const rule=(source,target,gain=1,cap=1)=>`<Rule source="${source}" target="${target}" gain="${gain}" cap="${cap}" />`;
-  const invalid=[rule("Input","Target",0,0),rule("Input","T1")+rule("input","T2"),
-    rule("I1","Target")+rule("I2","target"),rule("Human","human"),
+  const invalid=[rule("Input","Target",0,0),rule("Input","Target")+rule("input","target"),
+    rule("I1","Target")+rule("I2","target",1,.5),rule("Human","human"),
     Array.from({length:65},(_,i)=>rule("H"+i,"T"+i)).join(""),
     Array.from({length:257},()=>rule("Input","Target",0)).join("")];
   const filename=path.join(directory,"sparse-invalid.xml");

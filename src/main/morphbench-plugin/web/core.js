@@ -32,6 +32,13 @@
     }
     return new Set(names);
   }
+  function morphNameIndex(names) {
+    return new Map(Array.from(validateMorphNames(names), name => [providerIdentity(name), name]));
+  }
+  function morphKey(values, name) {
+    const identity = providerIdentity(name);
+    return Object.keys(values).find(key => providerIdentity(key) === identity);
+  }
   function kernel() {
     const value = global.CLAWMatrixKernel || (typeof globalThis !== "undefined" && globalThis.CLAWMatrixKernel);
     if (!value || ["gainActive", "sourceKind", "sourceValueValid", "sourceNeutral"].some(name => typeof value[name] !== "function")) fail("Shared CLAW sparse WebAssembly kernel is unavailable. Load matrix-kernel.js before core.js.");
@@ -71,7 +78,14 @@
     }
     return result;
   }
-  function matrixTargets(matrix) { return [...new Set(validateMatrix(matrix).rules.map(rule => rule.target))]; }
+  function matrixTargets(matrix) {
+    const names = new Map();
+    for (const rule of validateMatrix(matrix).rules) {
+      const identity = providerIdentity(rule.target);
+      if (!names.has(identity)) names.set(identity, rule.target);
+    }
+    return [...names.values()];
+  }
   function validateMatrix(profile) {
     if (!object(profile) || !identifier(profile.id) || !["CBBE", "3BA", "BHUNP", "UNP", "HIMBO", "Vanilla"].includes(profile.family) ||
         !["male", "female"].includes(profile.sex) ||
@@ -111,14 +125,14 @@
       for (const [names, name] of [[sourceNames, rule.source], [targetNames, rule.target]]) {
         if (!name) continue;
         const identity = providerIdentity(name);
-        if (names.has(identity) && names.get(identity) !== name) fail("Ambiguous active provider case aliases: " + names.get(identity) + " / " + name);
-        names.set(identity, name);
+        if (!names.has(identity)) names.set(identity, name);
       }
-      const pair = JSON.stringify([rule.source, rule.target]);
+      const target = providerIdentity(rule.target);
+      const pair = JSON.stringify([providerIdentity(rule.source), target]);
       if (pairs.has(pair)) fail("Duplicate CLAW source/target rule.");
       pairs.add(pair);
-      if (caps.has(rule.target) && caps.get(rule.target) !== cap) fail("Inconsistent target cap.");
-      caps.set(rule.target, cap);
+      if (caps.has(target) && caps.get(target) !== cap) fail("Inconsistent target cap.");
+      caps.set(target, cap);
       normalized.rules.push(edge);
     }
     if (caps.size > kernel().maxTargets) fail("A sparse matrix supports at most " + kernel().maxTargets + " active targets.");
@@ -192,17 +206,18 @@
     const humanByIdentity = new Map(Object.entries(human).map(([name, value]) => [providerIdentity(name), value]));
     const targets = new Map(), mappedSources = new Set();
     for (const rule of profile.rules) {
-      if (!targets.has(rule.target)) targets.set(rule.target, { target: rule.target, contributions: [], rawSum: 0, cap: rule.cap });
+      const identity = providerIdentity(rule.target);
+      if (!targets.has(identity)) targets.set(identity, { target: rule.target, contributions: [], rawSum: 0, cap: rule.cap });
     }
     const ordered = Array.from(targets.keys());
     const numericRules = profile.rules.map(rule => ({ ...rule,
-      target: ordered.indexOf(rule.target),
+      target: ordered.indexOf(providerIdentity(rule.target)),
       input: rule.function === "constant" ? 0 : kernel().sourceKind(rule.source) === 1 ? weight :
         kernel().sourceKind(rule.source) >= 2 ? (traits[rule.source] ?? kernel().sourceNeutral(kernel().sourceKind(rule.source))) :
           (humanByIdentity.get(providerIdentity(rule.source)) ?? 0) }));
     const numeric = kernel().evaluate(numericRules, ordered.length);
     profile.rules.forEach((rule, index) => {
-      const row = targets.get(rule.target);
+      const row = targets.get(providerIdentity(rule.target));
       row.cap = rule.cap;
       row.contributions.push({ ...rule, input: numericRules[index].input, ...numeric.details[index] });
       if (rule.function !== "constant") mappedSources.add(providerIdentity(rule.source));
@@ -211,7 +226,7 @@
     ordered.forEach((target, index) => {
       const row = targets.get(target);
       row.rawSum = numeric.rawSums[index]; row.clamped = numeric.clamped[index];
-      row.value = numeric.values[index]; values[target] = row.value;
+      row.value = numeric.values[index]; values[row.target] = row.value;
     });
     const rows = Array.from(targets.values()).sort((a, b) => a.target < b.target ? -1 : a.target > b.target ? 1 : 0);
     return { profile: profile, rows: rows, values: values, actorWeight: weight, humanTraits: traits,
@@ -224,13 +239,13 @@
         typeof scene.names.nif !== "string" || !scene.names.nif) fail("Open a CLAW body model first.");
     if (!object(morphs) || !Array.isArray(morphs.names) ||
         morphs.names.some(name => typeof name !== "string")) fail("Invalid host morph list.");
-    const available = validateMorphNames(morphs.names);
-    const missing = targets.filter(name => !available.has(name));
+    const available = morphNameIndex(morphs.names);
+    const missing = targets.filter(name => !available.has(providerIdentity(name)));
     if (missing.length) fail("Model is missing linked targets: " + missing.join(", "));
     return scene.names.nif;
   }
 
-  const api = Object.freeze({ parseHuman, validateHuman, validateTraits, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel });
+  const api = Object.freeze({ parseHuman, validateHuman, validateTraits, validateActorWeight, sourceKind, matrixTargets, providerIdentity, validateMorphNames, morphNameIndex, morphKey, getProfile, validateMatrix, serializableMatrix, evaluateMatrix, exportMatrix, exportCatalog, evaluate, validateModel });
   if (typeof module !== "undefined" && module.exports) module.exports = api;
   else global.CLAWLink = api;
 })(typeof window !== "undefined" ? window : globalThis);

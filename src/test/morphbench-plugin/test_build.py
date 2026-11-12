@@ -162,11 +162,17 @@ class BuildTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, 'raw rule count'):
             builder.catalog_from_bytes(self.sparse('<Rule source="A" target="B" gain="0" cap="1" />' * 257))
 
-    def test_provider_case_aliases_and_non_ascii_names_are_rejected_after_pruning(self):
+    def test_provider_identity_references_preserve_spelling_and_reject_duplicate_edges(self):
+        references = ('<Rule source="Human" target="Ear.Size" gain="1" cap="1" />'
+                      '<Rule source="human" target="Other" gain="1" cap="1" />'
+                      '<Rule source="Second" target="ear.size" gain="1" cap="1" />')
+        rows = builder.catalog_from_bytes(self.sparse(references))["profiles"][0]["rules"]
+        self.assertEqual(len(rows), 3)
+        self.assertEqual((rows[1]["source"], rows[2]["target"]), ("human", "ear.size"))
         for rules in (
             '<Rule source="Human" target="human" gain="1" cap="1" />',
-            '<Rule source="Human" target="Target" gain="1" cap="1" /><Rule source="human" target="Other" gain="1" cap="1" />',
-            '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="Other" target="ear.size" gain="1" cap="1" />',
+            '<Rule source="Human" target="Target" gain="1" cap="1" /><Rule source="human" target="target" gain="1" cap="1" />',
+            '<Rule source="Human" target="Ear.Size" gain="1" cap="1" /><Rule source="Other" target="ear.size" gain="1" cap="0.5" />',
             '<Rule source="Human" target="TargetГ©" gain="0" cap="1" />'):
             with self.subTest(rules=rules), self.assertRaises(ValueError):
                 builder.catalog_from_bytes(self.sparse(rules))

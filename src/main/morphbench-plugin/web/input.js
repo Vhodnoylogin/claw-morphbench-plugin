@@ -10,18 +10,21 @@
   }
   function fromRows(name, set, rows) {
     if (typeof name !== "string" || !name.trim() || typeof set !== "string" || !set.trim() || !Array.isArray(rows)) fail("Invalid human preset metadata.");
-    const endpoints = Object.create(null), seen = new Set();
+    const endpoints = Object.create(null), seen = new Set(), names = new Map();
     for (const row of rows) {
       if (!object(row) || typeof row.name !== "string" || !["small", "big"].includes(row.size)) fail("Only named explicit small/big preset endpoints are supported.");
       if (typeof row.value !== "string" && typeof row.value !== "number") fail("Invalid preset percentage.");
       if (typeof row.value === "string" && !/^[+-]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?$/.test(row.value)) fail("Invalid preset percentage.");
       const value = finite(finite(Number(row.value)) / 100);
       core.validateHuman({ [row.name]: value });
-      const pair = JSON.stringify([row.name, row.size]);
+      const identity = core.providerIdentity(row.name);
+      const pair = JSON.stringify([identity, row.size]);
       if (seen.has(pair)) fail("Duplicate human preset endpoint: " + row.name + "/" + row.size);
       seen.add(pair);
-      if (!Object.hasOwn(endpoints, row.name)) endpoints[row.name] = { small: 0, big: 0 };
-      endpoints[row.name][row.size] = value;
+      if (!names.has(identity)) names.set(identity, row.name);
+      const name = names.get(identity);
+      if (!Object.hasOwn(endpoints, name)) endpoints[name] = { small: 0, big: 0 };
+      endpoints[name][row.size] = value;
     }
     return { name, set, endpoints };
   }
@@ -46,7 +49,9 @@
     const values = core.validateHuman(envelope ? parsed.humanValues : parsed);
     const provenance = Object.create(null);
     for (const name of Object.keys(values)) {
-      const declared = envelope && object(parsed.humanValueProvenance) ? parsed.humanValueProvenance[name] : null;
+      const provenanceName = envelope && object(parsed.humanValueProvenance) ?
+        core.morphKey(parsed.humanValueProvenance, name) : undefined;
+      const declared = provenanceName === undefined ? null : parsed.humanValueProvenance[provenanceName];
       provenance[name] = typeof declared === "string" ? declared : "Imported preview coefficient; runtime provenance unspecified";
     }
     return { values, provenance, profileId: envelope && typeof parsed.profileId === "string" ? parsed.profileId : null,

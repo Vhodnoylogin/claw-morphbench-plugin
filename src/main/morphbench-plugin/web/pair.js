@@ -71,7 +71,8 @@
       if (profile.rules.some(rule => rule.function !== "constant" && core.sourceKind(rule.source) === 0) &&
           !profile.rules.some(rule => rule.function !== "constant" && core.sourceKind(rule.source) === 0 && humanIdentities.has(core.providerIdentity(rule.source)))) fail("Human model has no configured source morphs for the declared family.");
       const targets = core.matrixTargets(profile);
-      const missing = targets.filter(name => !available.wolf.has(name));
+      const wolfIdentities = new Set(Array.from(available.wolf, core.providerIdentity));
+      const missing = targets.filter(name => !wolfIdentities.has(core.providerIdentity(name)));
       if (missing.length) fail("Wolf model is missing linked targets: " + missing.join(", "));
       this.epoch += 1; this.available = available; this.enabled = true;
       return this.snapshot();
@@ -94,16 +95,23 @@
       const human = core.validateHuman(humanValues);
       if (matrix && ["id", "sex", "family", "version"].some(name => matrix[name] !== core.getProfile(this.catalog, this.profileId)[name])) fail("Matrix belongs to a different bound human family.");
       const result = matrix ? core.evaluateMatrix(matrix, human, actorWeight, humanTraits) : core.evaluate(this.catalog, this.profileId, human, actorWeight, humanTraits);
-      const inputs = Object.create(null), outputs = Object.assign(Object.create(null), result.values);
+      const inputs = Object.create(null), outputs = Object.create(null);
       const loadedSources = new Map(Array.from(this.available.human, name => [core.providerIdentity(name), name]));
+      const loadedTargets = new Map(Array.from(this.available.wolf, name => [core.providerIdentity(name), name]));
       const humanValuesByIdentity = new Map(Object.entries(human).map(([name, value]) => [core.providerIdentity(name), value]));
       for (const rule of result.profile.rules) {
         const loaded = rule.function !== "constant" && core.sourceKind(rule.source) === 0 && loadedSources.get(core.providerIdentity(rule.source));
         if (loaded) inputs[loaded] = humanValuesByIdentity.get(core.providerIdentity(rule.source)) ?? 0;
       }
       for (const [name, value] of Object.entries(human)) {
-        if (!this.available.human.has(name)) fail("Human model is missing input morph: " + name);
-        inputs[name] = value;
+        const loaded = loadedSources.get(core.providerIdentity(name));
+        if (!loaded) fail("Human model is missing input morph: " + name);
+        inputs[loaded] = value;
+      }
+      for (const [name, value] of Object.entries(result.values)) {
+        const loaded = loadedTargets.get(core.providerIdentity(name));
+        if (!loaded) fail("Bound model is missing planned morphs: " + name);
+        outputs[loaded] = value;
       }
       for (const [role, values] of [["human", inputs], ["wolf", outputs]]) {
         for (const name of this.ledger(role)) {

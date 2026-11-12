@@ -124,10 +124,11 @@
   }
   function refreshSliderValues(preserve = null) {
     let vector; try { vector = values(); } catch (_) { return; }
-    for (const row of sliderRows) { const value = Object.hasOwn(vector, row.name) ? vector[row.name] : 0;
+    for (const row of sliderRows) { const name = core.morphKey(vector, row.name), origin = core.morphKey(provenance, row.name);
+      const value = name === undefined ? 0 : vector[name];
       row.range.min = String(Math.min(-1, value)); row.range.max = String(Math.max(2, value));
       row.range.value = String(value); if (row.number !== preserve) row.number.value = format(value);
-      row.range.title = row.number.title = provenance[row.name] || (Object.hasOwn(vector, row.name) ?
+      row.range.title = row.number.title = (origin === undefined ? null : provenance[origin]) || (name !== undefined ?
         "Provided preview coefficient; runtime value unmeasured" : "Unspecified preview zero; runtime value unmeasured"); }
   }
   function filterSliders() { const term = el("filter").value.toLowerCase(); for (const row of sliderRows) row.node.hidden = !row.name.toLowerCase().includes(term); }
@@ -142,7 +143,7 @@
   }
   function edited(name, preserve = null) {
     if (busy) return;
-    if (name) provenance[name] = "Manually edited preview coefficient; not a game observation";
+    if (name) provenance[core.morphKey(provenance, name) || name] = "Manually edited preview coefficient; not a game observation";
     inputLabel = "Edited human preview vector"; ++inputRevision;
     try { calculate(); refreshSliderValues(preserve); if (selectedPair()) return applyPair(); } catch (error) { showError(error); }
   }
@@ -160,9 +161,10 @@
       const number = document.createElement("input"); number.type = "number"; number.step = "any";
       const origin = document.createElement("small");
       const change = control => { try { if (!String(control.value).trim()) throw new Error("Enter a finite human morph value.");
-        const vector = values(); vector[name] = Number(control.value); core.validateHuman(vector);
+        const vector = values(), suppliedName = core.morphKey(vector, name) || name;
+        vector[suppliedName] = Number(control.value); core.validateHuman(vector);
         if (busy) return;
-        el("human").value = JSON.stringify(vector, null, 2); return edited(name, control);
+        el("human").value = JSON.stringify(vector, null, 2); return edited(suppliedName, control);
       } catch (error) { showError(error); } };
       range.setAttribute("aria-label", name + " slider"); number.setAttribute("aria-label", name + " value");
       range.addEventListener("input", () => change(range)); number.addEventListener("input", () => change(number));
@@ -322,9 +324,11 @@
       source.setAttribute("list", "human-names"); source.setAttribute("aria-label", "Human source edge " + (index + 1)); source.disabled = rule.function === "constant";
       source.addEventListener("change", () => matrixChange(candidate => { candidate.rules[index].source = source.value; })); addControl(row, source);
       const target = document.createElement("select"); target.setAttribute("aria-label", "Wolf target edge " + (index + 1));
-      for (const name of targets) { const option = document.createElement("option"); option.value = name; option.textContent = name; target.appendChild(option); }
+      for (const name of [rule.target, ...targets.filter(name => core.providerIdentity(name) !== core.providerIdentity(rule.target))]) {
+        const option = document.createElement("option"); option.value = name; option.textContent = name; target.appendChild(option);
+      }
       target.value = rule.target; target.addEventListener("change", () => matrixChange(candidate => {
-        const existing = candidate.rules.find(edge => edge.target === target.value); candidate.rules[index].target = target.value;
+        const existing = candidate.rules.find(edge => core.providerIdentity(edge.target) === core.providerIdentity(target.value)); candidate.rules[index].target = target.value;
         if (existing) candidate.rules[index].cap = existing.cap;
       })); addControl(row, target);
       const fn = document.createElement("select"); fn.setAttribute("aria-label", "Function edge " + (index + 1));
@@ -343,7 +347,7 @@
         if (field === "cap") { control.min = "0"; control.max = "1"; }
         const change = () => matrixChange(candidate => {
           if (!control.value.trim()) throw new Error("Enter a finite " + field + ".");
-          if (field === "cap") candidate.rules.filter(edge => edge.target === rule.target).forEach(edge => { edge.cap = Number(control.value); });
+          if (field === "cap") candidate.rules.filter(edge => core.providerIdentity(edge.target) === core.providerIdentity(rule.target)).forEach(edge => { edge.cap = Number(control.value); });
           else candidate.rules[index][field] = Number(control.value);
         }, { rebuild: false, control });
         control.addEventListener("input", change); control.addEventListener("change", change); addControl(row, control);
@@ -376,8 +380,12 @@
   }
   function availableTargets(current) {
     const pair = controller && controller.pair;
-    return [...new Set([...(pair ? pair.wolf.names : []), ...current.rules.map(rule => rule.target),
-      ...core.getProfile(catalog, el("profile").value).rules.map(rule => rule.target)])];
+    const targets = new Map();
+    for (const name of [...(pair ? pair.wolf.names : []), ...current.rules.map(rule => rule.target),
+      ...core.getProfile(catalog, el("profile").value).rules.map(rule => rule.target)]) {
+      const identity = core.providerIdentity(name); if (!targets.has(identity)) targets.set(identity, name);
+    }
+    return [...targets.values()];
   }
   function addEdge(constant) {
     matrixChange(candidate => {
@@ -394,8 +402,8 @@
         if (activeSources.has(core.providerIdentity(target))) continue;
         for (const source of sources) {
           if (source && (core.providerIdentity(source) === core.providerIdentity(target) || activeTargets.has(core.providerIdentity(source)))) continue;
-          if (candidate.rules.some(edge => edge.source === source && edge.target === target)) continue;
-          const existing = candidate.rules.find(edge => edge.target === target);
+          if (candidate.rules.some(edge => core.providerIdentity(edge.source) === core.providerIdentity(source) && core.providerIdentity(edge.target) === core.providerIdentity(target))) continue;
+          const existing = candidate.rules.find(edge => core.providerIdentity(edge.target) === core.providerIdentity(target));
           const edge = { source, target, gain: 1, cap: existing ? existing.cap : 1, function: constant ? "constant" : "linear" };
           if (constant) edge.value = 0; candidate.rules.push(edge); return;
         }

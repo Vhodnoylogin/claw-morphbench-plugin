@@ -800,6 +800,35 @@ test("matrix sources preserve the kernel's ASCII-folded provider identity",async
   assert.equal(bench.previews.get("opaque:2").values.CLAWTorsoBellyRound,Math.fround(.3));assert.equal(bench.previews.size,2);
 });
 
+test("sliders display and replace imported case variants without creating another morph identity",async()=>{
+  const bench=harness();await open(bench);
+  bench.element("human").value='{"belly":0.6}';await bench.element("human").fire("input");
+  const row=bench.element("shared-sliders").children.find(row=>row.children[0].textContent==="Belly");
+  assert.ok(row);assert.ok(Math.abs(Number(row.children[2].value)-.6)<1e-6);
+  assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.6));
+  row.children[2].value="0.4";await row.children[2].fire("input");
+  assert.deepEqual(JSON.parse(bench.element("human").value),{belly:.4});
+  assert.equal(bench.previews.get("opaque:1").values.Belly,Math.fround(.4));
+  assert.equal(bench.previews.size,2);
+});
+
+test("matrix caps update one target identity and selectors retain authored target spelling",async()=>{
+  const bench=harness();await open(bench);
+  const profile={...catalog.profiles[0],rules:[
+    {source:"Belly",target:"CLAWTorsoBellyRound",gain:.5,cap:1},
+    {source:"BigBelly",target:"clawtorsobellyround",gain:.5,cap:1}
+  ]};
+  bench.element("matrix-paste").value=JSON.stringify({schemaVersion:1,kind:"claw-wolf-matrix",profile});await bench.element("matrix-paste-load").fire("click");
+  const target=bench.element("matrix-rows").children[1].children[2].children[0];
+  assert.equal(target.value,"clawtorsobellyround");assert.ok(target.children.some(option=>option.value===target.value));
+  const cap=bench.element("matrix-rows").children[0].children[5].children[0];cap.value="0.5";await cap.fire("input");
+  await bench.element("matrix-export").fire("click");
+  const saved=JSON.parse(bench.element("export-text").value).profile;
+  assert.deepEqual(saved.rules.map(rule=>rule.cap),[.5,.5]);
+  assert.deepEqual(saved.rules.map(rule=>rule.target),["CLAWTorsoBellyRound","clawtorsobellyround"]);
+  assert.equal(bench.previews.size,2);
+});
+
 
 test("restoring the accepted numeric value after an invalid pending edit acknowledges the final intent",async()=>{
   let release,started,armed=false,held=false;
