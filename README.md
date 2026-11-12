@@ -4,7 +4,7 @@ This development branch builds **0.4.0-dev.12**, the sparse-matrix, actor-weight
 The published 0.3.0 source baseline remains on `main`. Dev.12 puts human sliders,
 the immediately editable matrix and Export/Import matrix in that order. Resource
 configuration and diagnostics are collapsed; valid edits immediately update both
-previews without Calculate/Apply/Live controls. The shared evaluator and host API
+previews without Calculate/Apply/Live controls. The numerical contract and host API
 are unchanged. Replacement additionally preflights the retained full human input
 vector before retiring a working model. The packaged consumer passes 55 public-SDK
 harness checks; rendered-browser acceptance is recorded separately.
@@ -12,7 +12,7 @@ This candidate also adds
 model-validated custom targets, near-zero edge omission, Vanilla weight-only
 profiles for both sexes and independently selected male/female game XML;
 it now reads explicit human FaceGen/stature observations separately from body TRI
-coefficients. The development build pins CLAW 0.9.0 release candidate `c91ade2` and its seven-profile catalog, including
+coefficients. The development build pins CLAW commit `e91513065829bb6892acca6762bf54ef8d693bae` and its seven-profile catalog, including
 BHUNP 3.34 Advanced Ver4 and classic UNP Renewal 4.6. The native/WASM kernel shares reserved
 source validation and unavailable-input neutrals, and every family includes the
 authored head/ear/tail/claw links. No model assets, colour renderer or physics
@@ -101,6 +101,11 @@ DLL, body authoring and runtime belong to [CLAW - Customizable Lycanthrope Appea
 one committed CLAW revision, with per-file SHA256. The complete portable source
 closure includes MatrixKernel.h, MatrixKernel.cpp and Projection.h, and every
 compiled file contributes to the recorded kernel source digest.
+The MatrixKernel adapter calls the same allocation-free numeric evaluator used
+by Living Physique. Names bind to numeric indices outside that evaluator;
+CLAW retains its float32 parameters/results, ordered binary64 sum, cutoff and cap.
+The exact common header SHA256 is
+`d915ca24637efefab6e8209e962a9f04a2b069267e6b264b24ca35cb6ed11d26`.
 They remain external build dependencies; there is no copied C++ evaluator or
 alternative conversion formula in this repository. The builder accepts
 `--claw-source-dir` for exact matching local files, or downloads the four pinned
